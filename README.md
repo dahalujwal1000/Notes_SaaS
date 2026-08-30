@@ -2,6 +2,8 @@
 
 A production-style **Notes CRUD backend** with JWT authentication — built as a portfolio project to demonstrate real backend skills: auth, relational DB design, REST design, and security fundamentals.
 
+> 🔗 **Live demo:** [https://notes-saas-myez.onrender.com/docs](https://notes-saas-myez.onrender.com/docs) — deployed on Render (free tier; the first request after ~15 min of inactivity may take ~50 s while the service wakes up).
+
 ## Features
 
 - **JWT auth** — signup/login, bcrypt-hashed passwords, 60-minute access tokens

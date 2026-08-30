@@ -1,0 +1,17 @@
+# Secrets / env
+.env
+
+# Virtual env
+venv/
+
+# Python artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local dev database
+notes.db
+
+# OS junk
+.DS_Store
+Thumbs.db

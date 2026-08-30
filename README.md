@@ -1,0 +1,113 @@
+# Notes SaaS API
+
+A production-style **Notes CRUD backend** with JWT authentication — built as a portfolio project to demonstrate real backend skills: auth, relational DB design, REST design, and security fundamentals.
+
+## Features
+
+- **JWT auth** — signup/login, bcrypt-hashed passwords, 60-minute access tokens
+- **Ownership-scoped notes** — every query filters by the authenticated user's id; no cross-user data leaks (other users' notes return 404, not 403, to avoid id probing)
+- **Full CRUD REST API** with consistent Pydantic `response_model`s and explicit status codes (201 / 400 / 401 / 404 / 204)
+- **Extras** — search notes by title/content, pagination (`skip`/`limit`)
+- **Zero manual DB setup** — SQLite tables auto-create on first run; swap to PostgreSQL via `DATABASE_URL` only
+- **Interactive docs** — Swagger UI at `/docs` with one-click Authorize
+
+## Tech Stack
+
+Python 3.10+ · FastAPI · SQLAlchemy 2.0 (`declarative_base`) · Pydantic v2 · SQLite (dev) / PostgreSQL (prod) · python-jose (JWT) · bcrypt · Uvicorn
+
+## Project Structure
+
+```
+Notes_SaaS/
+├── main.py              # App entrypoint, wires routers, creates tables on startup
+├── database.py          # Engine, SessionLocal, Base, get_db() dependency
+├── models.py            # SQLAlchemy models: User, Note
+├── schemas.py           # Pydantic v2 request/response schemas
+├── auth.py              # bcrypt hashing, JWT create/verify, get_current_user()
+├── routers/
+│   ├── users.py         # POST /auth/signup, POST /auth/login
+│   └── notes.py         # /notes CRUD (all routes auth-protected)
+├── smoke_test.py        # End-to-end test against a live server (stdlib only)
+├── tests/               # pytest suite — API tested in-process, isolated DB
+│   ├── conftest.py
+│   └── test_api.py
+└── requirements.txt     # Pinned runtime deps (see requirements-dev.txt for tests)
+```
+
+## Setup & Run
+
+```bash
+python -m venv venv
+venv\Scripts\activate            # Windows  (Linux/macOS: source venv/bin/activate)
+pip install -r requirements.txt
+
+# Optional but recommended — otherwise an ephemeral random key is used and
+# tokens are invalidated on every server restart:
+set SECRET_KEY=change-me-to-a-long-random-string
+
+uvicorn main:app --reload
+```
+
+Open http://127.0.0.1:8000/docs → click **Authorize** → log in with `email` + `password` → try the endpoints.
+
+## API Endpoints
+
+| Method | Path              | Auth | Description                        |
+|--------|-------------------|------|------------------------------------|
+| POST   | `/auth/signup`    | —    | Create user (201; 400 if email taken) |
+| POST   | `/auth/login`     | —    | Form login → `{access_token}`      |
+| POST   | `/notes`          | JWT  | Create note (201)                  |
+| GET    | `/notes`          | JWT  | List my notes (`?skip=&limit=&search=`) |
+| GET    | `/notes/{id}`     | JWT  | Get my note (404 if not mine)      |
+| PUT    | `/notes/{id}`     | JWT  | Partial update (404 if not mine)   |
+| DELETE | `/notes/{id}`     | JWT  | Delete (204; 404 if not mine)      |
+
+### Example requests
+
+```bash
+# Signup
+curl -X POST http://127.0.0.1:8000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "supersecret123"}'
+
+# Login (form-encoded)
+curl -X POST http://127.0.0.1:8000/auth/login \
+  -d "username=user@example.com&password=supersecret123"
+
+# Create a note
+curl -X POST http://127.0.0.1:8000/notes \
+  -H "Authorization: Bearer <ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Groceries", "content": "milk, eggs"}'
+```
+
+## Testing
+
+**1. Automated suite (recommended)** — runs the whole API in-process with an
+isolated throwaway database; no server and no `notes.db` touched:
+
+```bash
+pip install -r requirements-dev.txt
+venv\Scripts\python -m pytest tests -v
+```
+
+**2. Live smoke test** against a real running server:
+
+```bash
+uvicorn main:app --port 8765                 # terminal 1
+python smoke_test.py http://127.0.0.1:8765   # terminal 2
+```
+
+**3. Interactive:** Swagger UI at `/docs` (green **Authorize** button to log
+in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
+
+## Security Notes
+
+- Passwords stored only as bcrypt hashes (`bcrypt.hashpw`/`checkpw`, used directly — passlib 1.7.4 is incompatible with bcrypt 5.x).
+- `SECRET_KEY` is read from the environment, never hardcoded.
+- JWT `sub` claim carries the user id; note ownership is enforced server-side on every query.
+- All DB/session/current-user access goes through FastAPI `Depends` dependency injection.
+
+## Deployment
+
+Set `DATABASE_URL` (e.g., PostgreSQL) and `SECRET_KEY` env vars on the host; `uvicorn main:app` is WSGI/ASGI-server agnostic, so it deploys as-is to Render/Railway free tiers.

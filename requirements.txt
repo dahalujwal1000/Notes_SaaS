@@ -1,0 +1,9 @@
+# Pinned to the versions the project was built and tested against.
+fastapi==0.141.1
+uvicorn==0.52.4
+sqlalchemy==2.0.52
+pydantic==2.13.5
+python-jose[cryptography]==3.5.0
+# bcrypt is used directly (passlib 1.7.4 is hard-incompatible with bcrypt 5.x).
+bcrypt==5.0.0
+python-multipart==0.0.32

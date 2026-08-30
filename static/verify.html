@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify your email</title>
+<link rel="stylesheet" href="style.css?v=20260830d">
+</head>
+<body>
+<section class="auth-view">
+  <div class="auth-card">
+    <div class="auth-logo">📬</div>
+    <h1 id="result-title">Verifying…</h1>
+    <p id="result-text" class="auth-sub"></p>
+    <button id="go-app" class="btn btn-primary btn-block" hidden>Open Notes</button>
+  </div>
+</section>
+<script>
+(function () {
+  var title = document.getElementById("result-title");
+  var text = document.getElementById("result-text");
+  var go = document.getElementById("go-app");
+  var token = new URLSearchParams(window.location.search).get("token");
+
+  go.addEventListener("click", function () { window.location.href = "/"; });
+
+  if (!token) {
+    title.textContent = "Missing link";
+    text.textContent = "This verification link is incomplete. Please use the full link from your email.";
+    go.hidden = false;
+    return;
+  }
+
+  fetch("/auth/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: token })
+  })
+    .then(function (resp) { return resp.json().then(function (data) { return { ok: resp.ok, data: data }; }); })
+    .then(function (result) {
+      if (!result.ok) {
+        var detail = (result.data && result.data.detail) || "Verification failed";
+        title.textContent = "Could not verify";
+        text.textContent = detail;
+      } else {
+        title.textContent = "Email verified 🎉";
+        text.textContent = "Your account is confirmed. You can now sign in.";
+      }
+    })
+    .catch(function () {
+      title.textContent = "Could not verify";
+      text.textContent = "Something went wrong. Please try again.";
+    })
+    .finally(function () { go.hidden = false; });
+})();
+</script>
+</body>
+</html>

@@ -49,6 +49,7 @@ const els = {
   eventTitle: $("event-title"), eventDesc: $("event-desc"),
   eventDate: $("event-date"), eventError: $("event-error"),
   eventCancel: $("event-cancel"), eventModalClose: $("event-modal-close"),
+  verifyBanner: $("verify-banner"), resendVerifyBtn: $("resend-verify-btn"),
 };
 
 const state = {
@@ -57,6 +58,7 @@ const state = {
   view: "home",
   notes: [], selectedId: null, mode: "edit",
   tasks: [], events: [], boardTab: "board", taskFilter: "",
+  isVerified: true,
   sortMode: "manual",
   dismissed: new Set(),
 };
@@ -162,6 +164,17 @@ async function enterApp() {
   els.userEmail.textContent = state.email;
   switchView("home");
   await Promise.allSettled([loadTasks(), refreshNotes(), loadEvents()]);
+  await checkVerification();
+}
+
+async function checkVerification() {
+  try {
+    const me = await api("/auth/me");
+    state.isVerified = me.is_verified === true;
+  } catch (_) {
+    state.isVerified = true; // unknown → don't nag
+  }
+  els.verifyBanner.hidden = state.isVerified;
 }
 
 /* ---------------- view switching ---------------- */
@@ -876,6 +889,17 @@ document.addEventListener("keydown", (event) => {
 els.authForm.addEventListener("submit", handleAuth);
 els.authSwitchBtn.addEventListener("click", () => setAuthMode(!state.isSignup));
 els.logoutBtn.addEventListener("click", logout);
+els.resendVerifyBtn.addEventListener("click", async () => {
+  try {
+    await api("/auth/resend-verification", { method: "POST" });
+    els.resendVerifyBtn.textContent = "Sent ✓";
+    setTimeout(() => { els.resendVerifyBtn.textContent = "Resend email"; }, 3000);
+  } catch (err) {
+    console.error(err);
+    els.resendVerifyBtn.textContent = "Please wait a minute";
+    setTimeout(() => { els.resendVerifyBtn.textContent = "Resend email"; }, 3000);
+  }
+});
 
 document.querySelectorAll(".tab").forEach((tab) =>
   tab.addEventListener("click", () => switchView(tab.dataset.view))

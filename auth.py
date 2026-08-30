@@ -11,6 +11,7 @@ Rules (per spec):
 import os
 import secrets
 import warnings
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -20,6 +21,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
+import mailer
 import models
 from database import get_db
 
@@ -95,4 +97,59 @@ def get_current_user(
     user = db.get(models.User, user_id)
     if user is None:
         raise credentials_exception
+    return user
+
+
+# --- Email verification --------------------------------------------------- #
+# We store only a SHA-256 hash of the verification token (never the raw
+# token), so a database leak can't be replayed as verification links.
+# Tokens expire after 24 hours.
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def issue_verification_token(user: models.User, db: Session) -> str:
+    """Generate a fresh verification token and store its hash + expiry."""
+    token = secrets.token_urlsafe(32)
+    user.verification_token_hash = _hash_token(token)
+    user.verification_expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    db.commit()
+    return token
+
+
+def send_verification_link(user: models.User, db: Session, base_url: str) -> None:
+    """Create a token and email the verification link to the user."""
+    token = issue_verification_token(user, db)
+    verify_url = f"{base_url}verify.html?token={token}"
+    mailer.send_verification_email(user.email, verify_url)
+
+
+def verify_email_token(token: str, db: Session) -> models.User:
+    """Validate a verification token: mark the user verified (single-use)."""
+    digest = _hash_token(token)
+    user = (
+        db.query(models.User)
+        .filter(models.User.verification_token_hash == digest)
+        .first()
+    )
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid verification link")
+    if user.is_verified:
+        return user
+
+    expires = user.verification_expires
+    if expires is None:
+        raise HTTPException(status_code=400, detail="Verification link has expired")
+    # Normalize naive timestamps (SQLite returns naive) to UTC for comparison.
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if expires < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Verification link has expired")
+
+    user.is_verified = True
+    user.verification_token_hash = None
+    user.verification_expires = None
+    db.commit()
+    db.refresh(user)
     return user

@@ -46,9 +46,43 @@ class NoCacheStaticFiles(StaticFiles):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Create tables on startup if they don't exist (dev convenience)."""
+    """Create tables on startup if they don't exist, then backfill new
+    columns on existing deployments (dev convenience)."""
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
     yield
+
+
+def _ensure_columns() -> None:
+    """Add columns that exist on the model but not yet on a live table.
+
+    `create_all` only creates *missing tables*; it never alters existing
+    ones. This tiny migration adds the email-verification columns to a
+    deployed Postgres/SQLite `users` table in place.
+    """
+    from sqlalchemy import inspect as sa_inspect, text
+
+    try:
+        columns = {c["name"] for c in sa_inspect(engine).get_columns("users")}
+    except Exception:
+        return  # table not created yet — create_all handles a fresh DB
+
+    dialect = engine.dialect.name
+    additions = []
+    if "is_verified" not in columns:
+        default = "0" if dialect == "sqlite" else "FALSE"
+        additions.append(
+            f"ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT {default}"
+        )
+    if "verification_token_hash" not in columns:
+        additions.append("ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR(64)")
+    if "verification_expires" not in columns:
+        additions.append("ALTER TABLE users ADD COLUMN verification_expires TIMESTAMP")
+
+    if additions:
+        with engine.begin() as conn:
+            for statement in additions:
+                conn.execute(text(statement))
 
 
 app = FastAPI(

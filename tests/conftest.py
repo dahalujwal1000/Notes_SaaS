@@ -12,6 +12,7 @@ import tempfile
 _test_db_path = os.path.join(tempfile.gettempdir(), "notes_saas_test.db")
 os.environ["DATABASE_URL"] = "sqlite:///" + _test_db_path
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production"
+os.environ["MAIL_BACKEND"] = "console"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

@@ -9,6 +9,7 @@ A production-style **Notes CRUD backend** with JWT authentication — built as a
 - **SaaS workspace dashboard (new)** — collapsible #FAFAFA sidebar with **Upcoming events** (add events with name/description/date; shows title, date + "Today / Tomorrow / in Xd" countdown), Agents & tools, Teamspaces / Private groups, browser-tab view switcher, and a **drag-and-drop Kanban board** (To-do / In progress / In review / Complete) with status dots, emoji avatars, per-column counts, timeline view, search & sort, and floating insight cards
 - **Notion-style notes** — sidebar + editor, debounced autosave, search, to-do checkboxes (`- [ ]` syntax)
 - **JWT auth** — signup/login, bcrypt-hashed passwords, 60-minute access tokens
+- **Email verification** — signup queues a one-time, hashed, 24h-expiring verification link via `mailer.py` (Gmail SMTP / Resend / console modes); unverified users see a "verify your email" banner with a throttled resend endpoint; `/auth/me` exposes verification state
 - **Ownership-scoped notes** — every query filters by the authenticated user's id; no cross-user data leaks (other users' notes return 404, not 403, to avoid id probing)
 - **Full CRUD REST API** with consistent Pydantic `response_model`s and explicit status codes (201 / 400 / 401 / 404 / 204)
 - **Extras** — search notes by title/content, pagination (`skip`/`limit`)
@@ -134,7 +135,14 @@ in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
    ```ini
    SECRET_KEY=<long-random-string>
    DATABASE_URL=<paste Render's Internal Database URL>
+   MAIL_BACKEND=smtp
+   MAIL_USER=<your-gmail-address>
+   MAIL_APP_PASSWORD=<16-char app password from Google>
    ```
+
+   Email verification keeps working without these too: `MAIL_BACKEND`
+   defaults to `console`, which logs the verification link server-side and
+   never sends email. Setting the SMTP vars above switches on real delivery.
 
    Plain `postgresql://` URLs are upgraded to SQLAlchemy's psycopg 3 dialect
    automatically — no manual scheme editing required.

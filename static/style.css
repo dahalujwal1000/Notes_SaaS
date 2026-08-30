@@ -235,6 +235,18 @@ input, textarea { font: inherit; color: inherit; }
 }
 .foot-email { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* ---------------- verify banner ---------------- */
+
+.verify-banner {
+  display: flex; align-items: center; gap: 10px;
+  background: #fff7e6; color: #7a5b00;
+  border-bottom: 1px solid #f0e0b8;
+  padding: 8px 20px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.verify-banner .btn-link { color: #7a5b00; font-weight: 600; }
+
 /* ---------------- main column ---------------- */
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }

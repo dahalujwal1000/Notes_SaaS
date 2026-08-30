@@ -37,7 +37,14 @@ class UserOut(BaseModel):
 
     id: int
     email: str
+    is_verified: bool
     created_at: datetime
+
+
+class VerifyEmail(BaseModel):
+    """POST /auth/verify body — the token from the emailed link."""
+
+    token: str = Field(min_length=10, max_length=128)
 
 
 class Token(BaseModel):

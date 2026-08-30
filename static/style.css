@@ -143,9 +143,23 @@ input, textarea { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: margin-left var(--speed) ease, width var(--speed) ease;
+  transition: width var(--speed) ease;
 }
-.sidebar.collapsed { margin-left: calc(-1 * var(--sidebar-w)); }
+
+/* Collapse to a slim rail instead of sliding off-screen — this keeps the
+   expand (») button reachable, so the sidebar can always be restored. */
+@media (min-width: 821px) {
+  .sidebar.collapsed { width: 48px; }
+  .sidebar.collapsed .ws-head {
+    justify-content: center;
+    padding: 12px 0 10px;
+  }
+  .sidebar.collapsed .ws-avatar,
+  .sidebar.collapsed .ws-names,
+  .sidebar.collapsed .tab-row,
+  .sidebar.collapsed .side-scroll,
+  .sidebar.collapsed .sidebar-foot { display: none; }
+}
 
 .ws-head {
   display: flex; align-items: center; gap: 8px;
@@ -524,8 +538,9 @@ input, textarea { font: inherit; color: inherit; }
     box-shadow: var(--card-shadow-hover);
   }
   .sidebar.open { transform: none; }
-  .sidebar.collapsed { margin-left: 0; }
+  .sidebar.collapsed { width: var(--sidebar-w); }
   #mobile-menu { display: inline-flex; }
+  #collapse-btn { display: none; }
   .page-head { padding: 16px 16px 0; }
   .board { padding: 14px 16px 20px; }
   .timeline { padding: 6px 16px 30px; }

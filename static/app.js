@@ -891,7 +891,9 @@ document.querySelectorAll(".group-head").forEach((head) =>
 
 els.collapseBtn.addEventListener("click", () => {
   els.sidebar.classList.toggle("collapsed");
-  els.collapseBtn.textContent = els.sidebar.classList.contains("collapsed") ? "»" : "«";
+  const collapsed = els.sidebar.classList.contains("collapsed");
+  els.collapseBtn.textContent = collapsed ? "»" : "«";
+  els.collapseBtn.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
 });
 els.mobileMenu.addEventListener("click", () => els.sidebar.classList.toggle("open"));
 

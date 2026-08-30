@@ -2,10 +2,11 @@
 
 A production-style **Notes CRUD backend** with JWT authentication — built as a portfolio project to demonstrate real backend skills: auth, relational DB design, REST design, and security fundamentals.
 
-> 🔗 **Live demo:** [https://notes-saas-myez.onrender.com/docs](https://notes-saas-myez.onrender.com/docs) — deployed on Render (free tier; the first request after ~15 min of inactivity may take ~50 s while the service wakes up).
+> 🔗 **Live app:** [https://notes-saas-myez.onrender.com](https://notes-saas-myez.onrender.com) — the full Notion-style UI, deployed on Render (free tier; the first request after ~15 min of inactivity may take ~50 s while the service wakes up). API reference: [`/docs`](https://notes-saas-myez.onrender.com/docs).
 
 ## Features
 
+- **Notion-style web UI** — login/signup, sidebar + editor, debounced autosave, search, and to-do checkboxes (`- [ ]` syntax) — plain HTML/CSS/JS served by the API itself, no build step
 - **JWT auth** — signup/login, bcrypt-hashed passwords, 60-minute access tokens
 - **Ownership-scoped notes** — every query filters by the authenticated user's id; no cross-user data leaks (other users' notes return 404, not 403, to avoid id probing)
 - **Full CRUD REST API** with consistent Pydantic `response_model`s and explicit status codes (201 / 400 / 401 / 404 / 204)
@@ -21,7 +22,8 @@ Python 3.10+ · FastAPI · SQLAlchemy 2.0 (`declarative_base`) · Pydantic v2 ·
 
 ```
 Notes_SaaS/
-├── main.py              # App entrypoint, wires routers, creates tables on startup
+├── main.py              # App entrypoint, wires routers, creates tables, serves the UI
+├── static/              # Single-page UI: index.html + style.css + app.js (no framework)
 ├── database.py          # Engine, SessionLocal, Base, get_db() dependency
 ├── models.py            # SQLAlchemy models: User, Note
 ├── schemas.py           # Pydantic v2 request/response schemas

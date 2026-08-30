@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes — your workspace</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ================= Auth view ================= -->
+<section id="auth-view" class="auth-view" hidden>
+  <div class="auth-card">
+    <div class="auth-logo">📝</div>
+    <h1 id="auth-title">Welcome back</h1>
+    <p class="auth-sub" id="auth-sub">Sign in to your workspace.</p>
+    <form id="auth-form" autocomplete="on">
+      <label class="field">
+        <span>Email</span>
+        <input type="email" id="auth-email" required placeholder="you@example.com" maxlength="255">
+      </label>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" id="auth-password" required minlength="8" placeholder="••••••••" maxlength="128">
+      </label>
+      <p id="auth-error" class="auth-error" role="alert" hidden></p>
+      <button type="submit" id="auth-submit" class="btn btn-primary btn-block">Sign in</button>
+    </form>
+    <p class="auth-switch">
+      <span id="auth-switch-text">New here?</span>
+      <button type="button" id="auth-switch-btn" class="btn-link">Create an account</button>
+    </p>
+  </div>
+</section>
+
+<!-- ================= App view ================= -->
+<div id="app-view" class="app" hidden>
+  <aside class="sidebar" id="sidebar">
+    <header class="sidebar-head">
+      <span class="workspace">📝 Notes</span>
+      <button id="logout-btn" class="btn-link small" type="button">Log out</button>
+    </header>
+    <button id="new-note-btn" class="btn btn-primary btn-block" type="button">+ New note</button>
+    <input type="search" id="search-input" class="search" placeholder="Search notes…" autocomplete="off">
+    <nav id="note-list" class="note-list" aria-label="Notes"></nav>
+    <footer class="sidebar-foot" id="user-email"></footer>
+  </aside>
+
+  <main class="editor" id="editor">
+    <div id="editor-empty" class="editor-empty">
+      <p>Select a note on the left, or create a new one.</p>
+    </div>
+    <div id="editor-pane" class="editor-pane" hidden>
+      <header class="editor-toolbar">
+        <button id="mobile-menu" class="btn-icon" type="button" aria-label="Toggle sidebar">☰</button>
+        <span id="save-status" class="save-status"></span>
+        <span class="toolbar-spacer"></span>
+        <button id="mode-toggle" class="btn btn-ghost" type="button">Preview</button>
+        <button id="delete-btn" class="btn btn-ghost danger" type="button">Delete</button>
+      </header>
+      <input id="note-title" class="note-title" placeholder="Untitled" maxlength="255" autocomplete="off">
+      <div id="todo-progress" class="todo-progress" hidden></div>
+      <textarea id="note-content" class="note-content" spellcheck="true"
+        placeholder="Write something… Type '- [ ] your task' to start a to-do list."></textarea>
+      <div id="note-preview" class="note-preview" hidden></div>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

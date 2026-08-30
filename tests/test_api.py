@@ -39,10 +39,15 @@ def auth_headers(client, email=None, password="supersecret123"):
 
 # -------------------------------- auth ----------------------------------- #
 
-def test_health_endpoint(client):
-    resp = client.get("/")
+def test_health_and_homepage(client):
+    resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+
+    # The homepage is now the static single-page UI.
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "text/html" in home.headers["content-type"]
 
 
 def test_signup_returns_201_with_public_fields_only(client):

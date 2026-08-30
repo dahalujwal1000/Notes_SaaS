@@ -7,3 +7,9 @@ python-jose[cryptography]==3.5.0
 # bcrypt is used directly (passlib 1.7.4 is hard-incompatible with bcrypt 5.x).
 bcrypt==5.0.0
 python-multipart==0.0.32
+# PostgreSQL driver (SQLAlchemy's psycopg 3 dialect) — used when DATABASE_URL
+# points at a Postgres database; ignored for local SQLite development.
+psycopg[binary]==3.3.4
+# Loads a local .env file for local development; hosting platforms set real
+# environment variables from their dashboards, which always take precedence.
+python-dotenv==1.2.3

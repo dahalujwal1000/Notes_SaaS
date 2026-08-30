@@ -5,13 +5,20 @@ Run locally with zero manual DB setup:
 Swagger UI: http://127.0.0.1:8000/docs
 """
 
-from contextlib import asynccontextmanager
+from dotenv import load_dotenv
 
-from fastapi import FastAPI
+# Load a local .env file before any module reads os.environ (database.py,
+# auth.py). Real environment variables always win (override=False default),
+# and on hosting platforms env vars come from the dashboard instead.
+load_dotenv()
 
-import models  # noqa: F401 — imported so create_all() sees every model
-from database import Base, engine
-from routers import notes, users
+from contextlib import asynccontextmanager  # noqa: E402
+
+from fastapi import FastAPI  # noqa: E402
+
+import models  # noqa: E402, F401 — imported so create_all() sees every model
+from database import Base, engine  # noqa: E402
+from routers import notes, users  # noqa: E402
 
 
 @asynccontextmanager

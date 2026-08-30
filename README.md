@@ -108,6 +108,22 @@ in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
 - JWT `sub` claim carries the user id; note ownership is enforced server-side on every query.
 - All DB/session/current-user access goes through FastAPI `Depends` dependency injection.
 
-## Deployment
+## Deployment (Render free tier)
 
-Set `DATABASE_URL` (e.g., PostgreSQL) and `SECRET_KEY` env vars on the host; `uvicorn main:app` is WSGI/ASGI-server agnostic, so it deploys as-is to Render/Railway free tiers.
+1. **New + → PostgreSQL** — create the database, then copy its **Internal Database URL**.
+2. **New + → Web Service** — connect this repo:
+   - Build command: `pip install -r requirements.txt`
+   - Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+3. **Environment → Add from .env** — paste:
+
+   ```ini
+   SECRET_KEY=<long-random-string>
+   DATABASE_URL=<paste Render's Internal Database URL>
+   ```
+
+   Plain `postgresql://` URLs are upgraded to SQLAlchemy's psycopg 3 dialect
+   automatically — no manual scheme editing required.
+4. Deploy. Swagger UI lives at `https://<your-app>.onrender.com/docs`.
+
+Locally, the same variables can live in a `.env` file (loaded via
+python-dotenv, gitignored) — real environment variables always win.

@@ -68,6 +68,18 @@ input, textarea { font: inherit; color: inherit; }
 .btn-ghost:hover { background: var(--hover); color: var(--ink); }
 .btn-ghost.danger:hover { color: var(--danger); background: rgba(235, 87, 87, 0.08); }
 .btn-block { display: block; width: 100%; }
+.btn-google {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: #fff; border: 1px solid #dadce0; color: var(--ink);
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.1);
+}
+.btn-google:hover { background: #f6f8fa; }
+.or-divider {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted); font-size: 12px; margin: 14px 0 16px; text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 .btn-link { color: var(--accent); font-weight: 500; padding: 0; }
 .btn-link:hover { text-decoration: underline; }
 .btn-link.small { font-size: 12.5px; color: var(--muted); font-weight: 400; }
@@ -127,6 +139,16 @@ input, textarea { font: inherit; color: inherit; }
   margin: 0 0 14px;
   text-align: left;
 }
+.auth-hint {
+  background: rgba(34, 197, 94, 0.1);
+  color: #177a3a;
+  font-size: 13px;
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin: 0 0 12px;
+  text-align: left;
+}
+.field-hint-row { text-align: right; margin: -6px 0 12px; }
 .auth-switch { font-size: 13.5px; color: var(--muted); margin: 18px 0 0; }
 
 /* ---------------- app layout ---------------- */

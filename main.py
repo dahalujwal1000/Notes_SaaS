@@ -67,7 +67,7 @@ def _ensure_columns() -> None:
     except Exception:
         return  # table not created yet — create_all handles a fresh DB
 
-    dialect = engine.dialect.name
+        dialect = engine.dialect.name
     additions = []
     if "is_verified" not in columns:
         default = "0" if dialect == "sqlite" else "FALSE"
@@ -78,6 +78,10 @@ def _ensure_columns() -> None:
         additions.append("ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR(64)")
     if "verification_expires" not in columns:
         additions.append("ALTER TABLE users ADD COLUMN verification_expires TIMESTAMP")
+    if "reset_token_hash" not in columns:
+        additions.append("ALTER TABLE users ADD COLUMN reset_token_hash VARCHAR(64)")
+    if "reset_expires" not in columns:
+        additions.append("ALTER TABLE users ADD COLUMN reset_expires TIMESTAMP")
 
     if additions:
         with engine.begin() as conn:

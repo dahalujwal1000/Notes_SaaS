@@ -8,10 +8,13 @@ Rules (per spec):
 - SECRET_KEY comes from the environment — never hardcoded.
 """
 
+import json
 import os
 import secrets
 import warnings
 import hashlib
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -39,6 +42,81 @@ if not SECRET_KEY:
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+# --- Google OAuth (Sign in with Google) ----------------------------------
+# Free to use (no Google billing required). OAuth Client ID + Secret come from
+# Google Cloud Console → APIs & Services → Credentials → Create credentials →
+# OAuth client ID (Web application). Add the callback URL:
+#   http://127.0.0.1:8000/auth/google/callback        (local)
+#   https://<your-app>.onrender.com/auth/google/callback  (production)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID") or ""
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET") or ""
+
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+
+def google_oauth_configured() -> bool:
+    """True only when both Google credentials are present."""
+    return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+
+def google_callback_url(base_url: str) -> str:
+    """The callback this app instance must register in the Google console."""
+    return f"{base_url.rstrip('/')}/auth/google/callback"
+
+
+def google_authorize_url(base_url: str) -> str:
+    """Build the Google sign-in consent URL the browser is redirected to."""
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": google_callback_url(base_url),
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online",
+        "prompt": "select_account",
+    }
+    return GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
+
+
+def google_fetch_profile(code: str, base_url: str) -> dict:
+    """Exchange the OAuth code for Google's verified profile via stdlib-only.
+
+    Steps:
+      1. code + client_id + secret  ->  access_token  (POST /token)
+      2. access_token               ->  {email, verified_email, name, ...}
+                                         (GET /oauth2/v2/userinfo)
+
+    Raises on any HTTP/network failure so callers can surface a friendly
+    message. No external library needed — urllib keeps the dependency list
+    exactly as-is.
+    """
+    token_body = urllib.parse.urlencode(
+        {
+            "code": code,
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": google_callback_url(base_url),
+            "grant_type": "authorization_code",
+        }
+    ).encode("utf-8")
+
+    token_req = urllib.request.Request(
+        GOOGLE_TOKEN_URL,
+        data=token_body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    with urllib.request.urlopen(token_req, timeout=20) as resp:
+        token_data = json.loads(resp.read().decode("utf-8"))
+    access_token = token_data["access_token"]
+
+    profile_req = urllib.request.Request(
+        GOOGLE_USERINFO_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    with urllib.request.urlopen(profile_req, timeout=20) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
 # --- Password hashing (bcrypt, used directly) ---------------------------- #
 # Note: the spec originally suggested passlib[bcrypt], but passlib 1.7.4 is
@@ -150,6 +228,47 @@ def verify_email_token(token: str, db: Session) -> models.User:
     user.is_verified = True
     user.verification_token_hash = None
     user.verification_expires = None
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+# --- Password reset ------------------------------------------------ #
+# Same pattern as email verification: store a hash of the reset token
+# (never the raw token), expire after 24 hours, single-use.
+
+def issue_reset_token(user: models.User, db: Session) -> str:
+    """Generate a fresh password-reset token and store its hash + expiry."""
+    token = secrets.token_urlsafe(32)
+    user.reset_token_hash = _hash_token(token)
+    user.reset_expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    db.commit()
+    return token
+
+
+def reset_password_with_token(token: str, new_password: str, db: Session) -> models.User:
+    """Validate a reset token and update the user's password (single-use)."""
+    digest = _hash_token(token)
+    user = (
+        db.query(models.User)
+        .filter(models.User.reset_token_hash == digest)
+        .first()
+    )
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    expires = user.reset_expires
+    if expires is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if expires < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    user.hashed_password = hash_password(new_password)
+    # Burn the token so it can't be reused.
+    user.reset_token_hash = None
+    user.reset_expires = None
     db.commit()
     db.refresh(user)
     return user

@@ -1,0 +1,83 @@
+"""Diagnose why verification emails aren't arriving.
+
+Run from the project folder:
+    venv\\Scripts\\python mailtest.py                 # checks config + SMTP login
+    venv\\Scripts\\python mailtest.py --send you@gmail.com
+
+It reads the same config as the app: env vars, or the local `.env` file
+(gitignored). Fill MAIL_USER / MAIL_APP_PASSWORD there first.
+"""
+
+import os
+import smtplib
+import ssl
+import sys
+from email.message import EmailMessage
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+backend = os.environ.get("MAIL_BACKEND") or "console"
+user = os.environ.get("MAIL_USER") or ""
+password = (os.environ.get("MAIL_APP_PASSWORD") or "").replace(" ", "")
+host = os.environ.get("MAIL_HOST", "smtp.gmail.com")
+port = int(os.environ.get("MAIL_PORT", "587"))
+from_addr = os.environ.get("MAIL_FROM") or user or "(not set)"
+
+print("=== mail config ===")
+print(f"MAIL_BACKEND        = {backend}")
+print(f"MAIL_USER           = {user or '(not set)'}")
+print(f"MAIL_APP_PASSWORD   = {'set (' + str(len(password)) + ' chars)' if password else '(NOT SET)'}")
+print(f"MAIL_HOST / PORT    = {host}:{port}")
+print(f"MAIL_FROM           = {from_addr}")
+print()
+
+if backend != "smtp":
+    print("Result: backend is NOT smtp. To send real email, set")
+    print("  MAIL_BACKEND=smtp  plus MAIL_USER + MAIL_APP_PASSWORD")
+    print("(On Render: Environment -> Add from .env. Locally: .env file.)")
+    sys.exit(1)
+
+if not user or not password:
+    print("Result: missing MAIL_USER or MAIL_APP_PASSWORD for smtp.")
+    sys.exit(2)
+
+print(f"Connecting to {host}:{port}...")
+try:
+    context = ssl.create_default_context()
+    if port == 465:
+        server = smtplib.SMTP_SSL(host, port, context=context, timeout=20)
+    else:
+        server = smtplib.SMTP(host, port, timeout=20)
+        server.ehlo()
+        if port == 587:
+            server.starttls(context=context)
+            server.ehlo()
+    print("Connected ✓")
+    server.login(user, password)
+    print("SMTP login OK ✓ — the credentials are valid.")
+
+    if "--send" in sys.argv:
+        target = sys.argv[sys.argv.index("--send") + 1]
+        msg = EmailMessage()
+        msg["Subject"] = "Notes workspace — mail test"
+        msg["From"] = from_addr
+        msg["To"] = target
+        msg.set_content(
+            "This is a test email from your Notes workspace. "
+            "If you're reading this, SMTP delivery works. 🎉"
+        )
+        server.send_message(msg)
+        print(f"Test email sent to {target} ✓ (check inbox + Spam)")
+    server.quit()
+    print("DONE — email delivery is configured correctly.")
+except smtplib.SMTPAuthenticationError as err:
+    print("SMTP login FAILED — credentials rejected.")
+    print(f"  ({err.smtp_code}) {err.smtp_error.decode(errors='replace')}")
+    print("Likely causes: wrong App Password, or 2-Step Verification is off.")
+    sys.exit(3)
+except Exception as err:  # noqa: BLE001
+    print("Mail test FAILED:")
+    print(f"  {type(err).__name__}: {err}")
+    sys.exit(4)

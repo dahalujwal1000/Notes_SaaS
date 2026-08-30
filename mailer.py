@@ -25,18 +25,46 @@ load_dotenv()
 
 logger = logging.getLogger("mailer")
 
-MAIL_BACKEND = os.environ.get("MAIL_BACKEND", "console")
+MAIL_BACKEND = os.environ.get("MAIL_BACKEND") or "console"
+MAIL_USER = os.environ.get("MAIL_USER") or ""
+MAIL_APP_PASSWORD = os.environ.get("MAIL_APP_PASSWORD") or ""
 
 # Console backend keeps the last sent emails so tests/dev can inspect them.
 OUTBOX: list[dict] = []
 
 
+def _log_config() -> None:
+    """Log which backend is active and whether credentials are present, so
+    Render logs immediately reveal why an email did (or didn't) get sent."""
+    if MAIL_BACKEND == "smtp":
+        if MAIL_USER and MAIL_APP_PASSWORD:
+            logger.info("mailer: backend=smtp user=%r (credentials present)", MAIL_USER)
+        else:
+            logger.warning(
+                "mailer: MAIL_BACKEND=smtp but MAIL_USER/MAIL_APP_PASSWORD are not set "
+                "— will fall back to console capture"
+            )
+    elif MAIL_BACKEND == "resend":
+        logger.info(
+            "mailer: backend=resend key=%s",
+            "set" if os.environ.get("RESEND_API_KEY") else "MISSING",
+        )
+    else:
+        logger.info("mailer: backend=console (verification links go to the server logs)")
+
+
+_log_config()
+
+
 def _smtp_send(to_email: str, subject: str, html: str) -> None:
     host = os.environ.get("MAIL_HOST", "smtp.gmail.com")
     port = int(os.environ.get("MAIL_PORT", "587"))
-    user = os.environ.get("MAIL_USER", "")
-    password = os.environ.get("MAIL_APP_PASSWORD", "")
-    from_addr = os.environ.get("MAIL_FROM", user or "no-reply@notes-saas.local")
+    user = MAIL_USER
+    password = MAIL_APP_PASSWORD.replace(" ", "")  # Gmail shows spaces; SMTP doesn't need them
+    from_addr = os.environ.get("MAIL_FROM") or (user or "no-reply@notes-saas.local")
+
+    if not user or not password:
+        raise RuntimeError("MAIL_USER/MAIL_APP_PASSWORD missing for the smtp backend")
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -62,28 +90,41 @@ def _smtp_send(to_email: str, subject: str, html: str) -> None:
 
 
 def send_email(to_email: str, subject: str, html: str) -> None:
-    """Send one HTML email — the single seam every mail message goes through."""
+    """Send one HTML email — the single seam every mail message goes through.
+
+    If a real backend (smtp/resend) is configured but fails — bad credentials,
+    SMTP down — we still capture the message in OUTBOX (console) and log the
+    real error loudly, so a verification link is never silently lost.
+    """
     if MAIL_BACKEND == "smtp":
-        _smtp_send(to_email, subject, html)
-        logger.info("email queued to %s via smtp", to_email)
+        try:
+            _smtp_send(to_email, subject, html)
+            logger.info("email queued to %s via smtp", to_email)
+            return
+        except Exception:
+            logger.exception("SMTP send FAILED — falling back to console capture")
     elif MAIL_BACKEND == "resend":
-        import requests
-        resp = requests.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {os.environ.get('RESEND_API_KEY')}"},
-            json={
-                "from": os.environ.get("MAIL_FROM", "Notes <no-reply@example.com>"),
-                "to": [to_email],
-                "subject": subject,
-                "html": html,
-            },
-            timeout=15,
-        )
-        resp.raise_for_status()
-        logger.info("email queued to %s via resend", to_email)
-    else:
-        OUTBOX.append({"to": to_email, "subject": subject, "html": html})
-        logger.info("[console mail] to=%s subject=%r", to_email, subject)
+        try:
+            import requests
+            resp = requests.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {os.environ.get('RESEND_API_KEY')}"},
+                json={
+                    "from": os.environ.get("MAIL_FROM", "Notes <no-reply@example.com>"),
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html,
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            logger.info("email queued to %s via resend", to_email)
+            return
+        except Exception:
+            logger.exception("Resend send FAILED — falling back to console capture")
+
+    OUTBOX.append({"to": to_email, "subject": subject, "html": html})
+    logger.warning("[console mail] to=%s subject=%r (fallback)", to_email, subject)
 
 
 def send_verification_email(to_email: str, verify_url: str) -> None:
@@ -96,5 +137,20 @@ def send_verification_email(to_email: str, verify_url: str) -> None:
         "text-decoration:none;font-weight:600' href='" + verify_url + "'>Verify email</a></p>"
         "<p style='color:#8b8b8b;font-size:12px'>Or paste this link into your browser:<br>"
         + verify_url + "</p>"
+        )
+    send_email(to_email, subject, html)
+
+
+def send_password_reset_email(to_email: str, reset_url: str) -> None:
+    """Password-reset email, sent by the /auth/forgot-password endpoint."""
+    subject = "Reset your password"
+    html = (
+        "<h2>Reset your password 🔐</h2>"
+        "<p>You (or someone who clicked 'Forgot password') requested a password reset.</p>"
+        "<p><a style='background:#2383e2;color:#fff;padding:10px 16px;border-radius:8px;"
+        "text-decoration:none;font-weight:600' href='" + reset_url + "'>Reset password</a></p>"
+        "<p style='color:#8b8b8b;font-size:12px'>Or paste this link into your browser:<br>"
+        + reset_url + "</p>"
+        "<p style='color:#8b8b8b;font-size:12px'>This link expires in 24 hours.</p>"
     )
     send_email(to_email, subject, html)

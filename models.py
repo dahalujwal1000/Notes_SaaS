@@ -21,6 +21,8 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
     verification_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     verification_expires: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reset_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reset_expires: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

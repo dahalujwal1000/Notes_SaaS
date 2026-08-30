@@ -140,6 +140,54 @@ def test_resend_throttled(client):
     assert resp.status_code == 429
 
 
+def test_resend_public_sends_link_for_unverified_email(client):
+    """Login-screen resend works without a session: unverified -> new link."""
+    email = unique_email()
+    signup(client, email=email)
+    OUTBOX.clear()
+    resp = client.post(
+        "/auth/resend-verification-email", json={"email": email}
+    )
+    assert resp.status_code == 200
+    assert len(OUTBOX) == 1
+    assert OUTBOX[0]["to"] == email
+
+
+def test_resend_public_non_enumerating_for_unknown_email(client):
+    """Unknown / verified / unverified all get the same non-enumerating reply."""
+    resp = client.post(
+        "/auth/resend-verification-email",
+        json={"email": "nobody@example.com"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"] == "If that email exists and is unverified, a new link has been sent"
+
+
+def test_resend_public_throttled(client):
+    """A second request inside the throttle window returns 429."""
+    email = unique_email()
+    signup(client, email=email)
+    assert client.post(
+        "/auth/resend-verification-email", json={"email": email}
+    ).status_code == 200
+    resp = client.post("/auth/resend-verification-email", json={"email": email})
+    assert resp.status_code == 429
+
+
+def test_resend_public_noop_for_verified_user(client):
+    """A verified user gets no new email and a no-op success reply."""
+    email = unique_email()
+    signup(client, email=email)
+    token = _token_from_last_email()
+    client.post("/auth/verify", json={"token": token})
+    OUTBOX.clear()
+    resp = client.post(
+        "/auth/resend-verification-email", json={"email": email}
+    )
+    assert resp.status_code == 200
+    assert len(OUTBOX) == 0
+
+
 def test_resend_noop_for_verified_user(client):
     email = unique_email()
     signup(client, email=email)

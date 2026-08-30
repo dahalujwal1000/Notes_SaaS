@@ -18,7 +18,7 @@ os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"  # exercise the hard gate
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from database import Base, engine  # noqa: E402
+from database import Base, SessionLocal, engine, get_db  # noqa: E402
 from main import app  # noqa: E402
 
 
@@ -31,13 +31,29 @@ def _remove_stale_db():
 
 
 @pytest.fixture()
-def client():
-    """TestClient with a clean schema per test — no HTTP server needed."""
+def db_session():
+    """Raw DB session shared with the TestClient via get_db override.
+
+    The session is created *after* the schema exists and is committed/closed
+    automatically when the test ends.
+    """
     Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    # Make FastAPI's get_db dependency yield this same session.
+    app.dependency_overrides[get_db] = lambda: (yield db)
+    try:
+        yield db
+    finally:
+        db.close()
+        app.dependency_overrides.clear()
+        Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture()
+def client(db_session):
+    """TestClient wired to the same DB session as the test (via db_session)."""
     with TestClient(app) as c:
         yield c
-    Base.metadata.drop_all(bind=engine)
-    engine.dispose()
 
 
 # ------------------------- shared API helpers --------------------------- #

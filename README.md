@@ -10,6 +10,8 @@ A production-style **Notes CRUD backend** with JWT authentication — built as a
 - **Notion-style notes** — sidebar + editor, debounced autosave, search, to-do checkboxes (`- [ ]` syntax)
 - **JWT auth** — signup/login, bcrypt-hashed passwords, 60-minute access tokens
 - **Email verification (hard gate)** — signup queues a one-time, hashed, 24h-expiring verification link via `mailer.py` (Gmail SMTP / Resend / console modes); **unverified accounts cannot log in** (`EMAIL_VERIFICATION_REQUIRED=true` default, toggle off only for local sandbox testing); verified state exposed via `/auth/me`
+- **Sign in with Google (free)** — one-click "Continue with Google" on the login card; Google OAuth is free from Google Cloud Console (no billing required) and creates users as **already verified** — so Google logins never depend on email delivery at all. Falls back gracefully to email+password when credentials aren't configured.
+- **Password recovery** — "Forgot password?" on the login screen emails a single-use, 24h-expiring reset link (`reset-password.html`), and unverified users stuck at the login screen can resend their verification link without signing in
 - **Ownership-scoped notes** — every query filters by the authenticated user's id; no cross-user data leaks (other users' notes return 404, not 403, to avoid id probing)
 - **Full CRUD REST API** with consistent Pydantic `response_model`s and explicit status codes (201 / 400 / 401 / 404 / 204)
 - **Extras** — search notes by title/content, pagination (`skip`/`limit`)
@@ -25,7 +27,7 @@ Python 3.10+ · FastAPI · SQLAlchemy 2.0 (`declarative_base`) · Pydantic v2 ·
 ```
 Notes_SaaS/
 ├── main.py              # App entrypoint, wires routers, creates tables, serves the UI
-├── static/              # Single-page UI: index.html + style.css + app.js (no framework)
+├── static/              # Single-page UI: index.html, verify.html, reset-password.html + style.css + app.js (no framework)
 ├── database.py          # Engine, SessionLocal, Base, get_db() dependency
 ├── models.py            # SQLAlchemy models: User, Note
 ├── schemas.py           # Pydantic v2 request/response schemas
@@ -64,6 +66,13 @@ Open http://127.0.0.1:8000/docs → click **Authorize** → log in with `email` 
 |--------|-------------------|------|------------------------------------|
 | POST   | `/auth/signup`    | —    | Create user (201; 400 if email taken) |
 | POST   | `/auth/login`     | —    | Form login → `{access_token}`      |
+| GET    | `/auth/google/login` | —  | Redirect to Google's consent screen (free OAuth) |
+| GET    | `/auth/google/callback` | — | Google's reply → creates/finds user (auto-verified) + JWT → redirects to app |
+| POST   | `/auth/verify`    | —    | Verify email with emailed token     |
+| POST   | `/auth/resend-verification` | JWT | Re-send verification link (in-app) |
+| POST   | `/auth/resend-verification-email` | — | Re-send verification link (login screen, by email, throttled, non-enumerating) |
+| POST   | `/auth/forgot-password` | —    | Email a password-reset link (non-enumerating) |
+| POST   | `/auth/reset-password` | —    | Set new password using emailed token (single-use, 24 h) |
 | POST   | `/notes`          | JWT  | Create note (201)                  |
 | GET    | `/notes`          | JWT  | List my notes (`?skip=&limit=&search=`) |
 | GET    | `/notes/{id}`     | JWT  | Get my note (404 if not mine)      |
@@ -139,6 +148,8 @@ in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
    MAIL_USER=<your-gmail-address>
    MAIL_APP_PASSWORD=<16-char app password from Google>
    EMAIL_VERIFICATION_REQUIRED=true
+   GOOGLE_CLIENT_ID=<your-id.apps.googleusercontent.com>
+   GOOGLE_CLIENT_SECRET=<your-secret>
    ```
 
    Email verification keeps working without the SMTP vars too: `MAIL_BACKEND`
@@ -149,6 +160,20 @@ in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
 
    Plain `postgresql://` URLs are upgraded to SQLAlchemy's psycopg 3 dialect
    automatically — no manual scheme editing required.
+
+### Sign in with Google — free setup (5 minutes)
+
+1. Go to **console.cloud.google.com** → create/select a project.
+2. **APIs & Services → OAuth consent screen** → External → fill app name + your email → Save.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**.
+4. In **Authorized redirect URIs**, add *both*:
+   - `http://127.0.0.1:8000/auth/google/callback` (local dev)
+   - `https://<your-app>.onrender.com/auth/google/callback` (your Render URL)
+5. Click **Create** → copy the **Client ID** + **Client secret** → paste them into Render → **save → redeploy**.
+
+> 💡 Free: Google OAuth sign-in has no billing/usage cost, and works on
+> Render's free tier. Google already verified the email, so these accounts
+> are `is_verified=true` immediately — no verification email, ever.
 4. Deploy. Swagger UI lives at `https://<your-app>.onrender.com/docs`.
 
 Locally, the same variables can live in a `.env` file (loaded via

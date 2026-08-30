@@ -27,7 +27,13 @@ const els = {
   authTitle: $("auth-title"), authSub: $("auth-sub"),
   authEmail: $("auth-email"), authPassword: $("auth-password"),
   authError: $("auth-error"), authSubmit: $("auth-submit"),
+  authResendLine: $("auth-resend-line"), authResendBtn: $("auth-resend-btn"),
+  forgotPasswordBtn: $("forgot-password-btn"),
+  forgotForm: $("forgot-form"), forgotEmail: $("forgot-email"),
+  forgotError: $("forgot-error"), forgotSubmit: $("forgot-submit"),
+  forgotBackBtn: $("forgot-back-btn"),
   authSwitchText: $("auth-switch-text"), authSwitchBtn: $("auth-switch-btn"),
+  authSwitch: $("auth-switch"),
   authForm: $("auth-form"),
   sidebar: $("sidebar"), collapseBtn: $("collapse-btn"), mobileMenu: $("mobile-menu"),
   userEmail: $("user-email"), logoutBtn: $("logout-btn"),
@@ -61,6 +67,7 @@ const state = {
   isVerified: true,
   sortMode: "manual",
   dismissed: new Set(),
+  resendEmail: null,
 };
 
 /* ---------------- API helpers ---------------- */
@@ -108,7 +115,9 @@ function setAuthMode(signup) {
   els.authSubmit.textContent = signup ? "Sign up" : "Sign in";
   els.authSwitchText.textContent = signup ? "Already have an account?" : "New here?";
   els.authSwitchBtn.textContent = signup ? "Sign in" : "Create an account";
+  els.forgotForm.hidden = true;
   hideAuthError();
+  hideResendLine();
 }
 
 function showAuthError(message) {
@@ -118,30 +127,115 @@ function showAuthError(message) {
 
 function hideAuthError() { els.authError.hidden = true; }
 
+function hideResendLine() { els.authResendLine.hidden = true; }
+
+function showResendLine() { els.authResendLine.hidden = false; }
+
 async function handleAuth(event) {
   event.preventDefault();
   hideAuthError();
+  hideResendLine();
   els.authSubmit.disabled = true;
   try {
     const email = els.authEmail.value.trim();
     const password = els.authPassword.value;
+
     if (state.isSignup) {
       await api("/auth/signup", { method: "POST", body: { email, password } });
+      // Account created — but login is hard-gated until the user verifies
+      // their email, so don't attempt an auto-login that will 401. Flip back
+      // to the login form with a clear, friendly message.
+      els.authForm.reset();
+      setAuthMode(false);
+      showAuthError(
+        "Account created! Check your inbox for the verification link — click it, then sign in."
+      );
+      return;
     }
-    const data = await api("/auth/login", {
-      method: "POST",
-      form: true,
-      body: { username: email, password },
-    });
-    state.token = data.access_token;
-    state.email = email;
-    localStorage.setItem(TOKEN_KEY, state.token);
-    localStorage.setItem(EMAIL_KEY, email);
-    await enterApp();
+
+    try {
+      const data = await api("/auth/login", {
+        method: "POST",
+        form: true,
+        body: { username: email, password },
+      });
+      state.token = data.access_token;
+      state.email = email;
+      localStorage.setItem(TOKEN_KEY, state.token);
+      localStorage.setItem(EMAIL_KEY, email);
+      await enterApp();
+    } catch (err) {
+      // If the account exists but isn't verified, offer a one-click resend
+      // right here on the login screen (the in-app resend would require login,
+      // which is blocked — a dead-end otherwise).
+      if (err.status === 401 && /not verified/i.test(err.message || "")) {
+        state.resendEmail = email;
+        showAuthError(err.message);
+        showResendLine();
+      } else {
+        throw err;
+      }
+    }
   } catch (err) {
     showAuthError(err.message || "Something went wrong.");
   } finally {
     els.authSubmit.disabled = false;
+  }
+}
+
+async function handleResendVerification() {
+  const email = state.resendEmail || els.authEmail.value.trim();
+  els.authResendBtn.disabled = true;
+  try {
+    await api("/auth/resend-verification-email", {
+      method: "POST",
+      body: { email },
+    });
+    showAuthError("Verification link sent — check your inbox (and spam).");
+    hideResendLine();
+  } catch (err) {
+    showAuthError(err.message || "Could not send the link right now.");
+  } finally {
+    els.authResendBtn.disabled = false;
+  }
+}
+
+function openForgotForm() {
+  hideAuthError();
+  hideResendLine();
+  els.authForm.hidden = true;
+  els.authSwitch.hidden = true;
+  els.forgotForm.hidden = false;
+  els.forgotForm.reset();
+  els.forgotEmail.focus();
+}
+
+function closeForgotForm() {
+  els.forgotForm.hidden = true;
+  els.authForm.hidden = false;
+  els.authSwitch.hidden = false;
+  hideAuthError();
+}
+
+async function handleForgotPassword(event) {
+  event.preventDefault();
+  els.forgotError.hidden = true;
+  els.forgotSubmit.disabled = true;
+  try {
+    await api("/auth/forgot-password", {
+      method: "POST",
+      body: { email: els.forgotEmail.value.trim() },
+    });
+    els.forgotError.textContent =
+      "If that email exists, a reset link has been sent. Check your inbox (and spam).";
+    els.forgotError.classList.add("auth-hint");
+    els.forgotError.hidden = false;
+  } catch (err) {
+    els.forgotError.textContent = err.message || "Something went wrong.";
+    els.forgotError.classList.remove("auth-hint");
+    els.forgotError.hidden = false;
+  } finally {
+    els.forgotSubmit.disabled = false;
   }
 }
 
@@ -888,6 +982,10 @@ document.addEventListener("keydown", (event) => {
 
 els.authForm.addEventListener("submit", handleAuth);
 els.authSwitchBtn.addEventListener("click", () => setAuthMode(!state.isSignup));
+els.forgotPasswordBtn.addEventListener("click", openForgotForm);
+els.forgotBackBtn.addEventListener("click", closeForgotForm);
+els.forgotForm.addEventListener("submit", handleForgotPassword);
+els.authResendBtn.addEventListener("click", handleResendVerification);
 els.logoutBtn.addEventListener("click", logout);
 els.resendVerifyBtn.addEventListener("click", async () => {
   try {
@@ -984,6 +1082,24 @@ document.addEventListener("click", (event) => {
 });
 
 (async function init() {
+  // Sign in with Google: the OAuth callback redirects here with ?google_token=…
+  const params = new URLSearchParams(window.location.search);
+  const googleToken = params.get("google_token");
+  const googleEmail = params.get("email");
+  const googleError = params.get("error");
+  if (googleToken) {
+    state.token = googleToken;
+    state.email = googleEmail || "";
+    localStorage.setItem(TOKEN_KEY, state.token);
+    localStorage.setItem(EMAIL_KEY, state.email);
+    // Clean the token out of the address bar so it isn't shared with anyone.
+    window.history.replaceState({}, "", window.location.pathname);
+    try {
+      await enterApp();
+      return;
+    } catch (_) { /* bad token — fall through to the login screen */ }
+  }
+
   if (state.token) {
     try {
       await enterApp();
@@ -993,6 +1109,15 @@ document.addEventListener("click", (event) => {
   els.appView.hidden = true;
   els.authView.hidden = false;
   setAuthMode(false);
+
+  if (googleError) {
+    const messages = {
+      "google-auth-denied": "Google sign-in was cancelled — try again or use email & password.",
+      "google-auth-failed": "Google sign-in failed. Please try again.",
+      "google-email-not-verified": "That Google account's email couldn't be verified.",
+    };
+    showAuthError(messages[googleError] || "Google sign-in didn't complete. Please try again.");
+  }
 })();
 
 

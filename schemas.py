@@ -47,6 +47,26 @@ class VerifyEmail(BaseModel):
     token: str = Field(min_length=10, max_length=128)
 
 
+class ResendVerificationEmail(BaseModel):
+    """POST /auth/resend-verification-email body — used from the login
+    screen, where the user does not (yet) have an authenticated session."""
+
+    email: str = Field(max_length=255, pattern=_EMAIL_PATTERN)
+
+
+class ForgotPassword(BaseModel):
+    """POST /auth/forgot-password body."""
+
+    email: str = Field(max_length=255, pattern=_EMAIL_PATTERN)
+
+
+class ResetPassword(BaseModel):
+    """POST /auth/reset-password body — token from the emailed reset link."""
+
+    token: str = Field(min_length=10, max_length=128)
+    password: str = Field(min_length=8, max_length=128, examples=["supersecret123"])
+
+
 class Token(BaseModel):
     """POST /auth/login response."""
 

@@ -26,7 +26,7 @@ import models
 from database import get_db
 
 # --- Settings ----------------------------------------------------------- #
-SECRET_KEY = os.environ.get("SECRET_KEY")
+SECRET_KEY = os.environ.get("SECRET_KEY") or None
 if not SECRET_KEY:
     # Dev convenience fallback: a random per-process key keeps the repo free
     # of hardcoded secrets, but tokens are invalidated on every restart.

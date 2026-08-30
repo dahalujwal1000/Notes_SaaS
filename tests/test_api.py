@@ -10,7 +10,7 @@ isolated SQLite test database and resets the schema for every test.
 INVALID_AUTH = {"Authorization": "Bearer not-a-valid-token"}
 
 # Helpers live in conftest.py so both test modules share them.
-from conftest import auth_headers, signup, unique_email  # noqa: E402, F401
+from conftest import auth_headers, signup, unique_email, verify_last_signup  # noqa: E402, F401
 
 
 # -------------------------------- auth ----------------------------------- #
@@ -57,6 +57,8 @@ def test_signup_rejects_invalid_email(client):
 def test_login_returns_bearer_token(client):
     email = unique_email()
     assert signup(client, email=email).status_code == 201
+    # Hard gate: the account must be verified before login succeeds.
+    verify_last_signup(client)
     resp = client.post(
         "/auth/login", data={"username": email, "password": "supersecret123"}
     )
@@ -64,6 +66,15 @@ def test_login_returns_bearer_token(client):
     body = resp.json()
     assert body["token_type"] == "bearer"
     assert body["access_token"]
+
+
+def test_login_rejects_unverified_user(client):
+    email = unique_email()
+    signup(client, email=email)
+    resp = client.post(
+        "/auth/login", data={"username": email, "password": "supersecret123"}
+    )
+    assert resp.status_code == 401
 
 
 def test_login_rejects_wrong_password(client):

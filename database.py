@@ -10,7 +10,9 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./notes.db")
+# Empty string is treated as unset so a `.env` with blank placeholders
+# can't accidentally override the SQLite default.
+DATABASE_URL = os.environ.get("DATABASE_URL") or "sqlite:///./notes.db"
 
 # Hosting platforms (Render/Railway) hand out plain `postgresql://` URLs,
 # which SQLAlchemy maps to the legacy psycopg2 driver. This project ships

@@ -1,6 +1,7 @@
 """Auth routes: signup, login, current user, and email verification."""
 
 import logging
+import os
 import time
 from typing import Annotated
 
@@ -20,6 +21,18 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 DbSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[models.User, Depends(get_current_user)]
+
+
+def email_verification_required() -> bool:
+    """Whether login is gated on a verified email (default: yes).
+
+    Set EMAIL_VERIFICATION_REQUIRED=false only for local/sandbox testing
+    where you can't (or don't want to) open real emails.
+    """
+    return os.environ.get("EMAIL_VERIFICATION_REQUIRED", "true").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
 
 # Simple in-memory resend throttle: at most one verification email per
 # address per minute (per-process — adequate for a demo/portfolio app).
@@ -74,12 +87,23 @@ def login(
     db: DbSession,
 ) -> schemas.Token:
     """Verify credentials (form-encoded: username=email, password) and
-    return a JWT access token whose `sub` claim is the user id."""
+    return a JWT access token whose `sub` claim is the user id.
+
+    Hard gate: unverified accounts cannot log in — they must click the
+    verification link we emailed them first (random emails stay out).
+    """
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if user is None or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if email_verification_required() and not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email not verified. Click the verification link we emailed you.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

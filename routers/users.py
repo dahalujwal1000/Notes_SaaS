@@ -7,7 +7,7 @@ import urllib.parse
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -278,3 +278,78 @@ def reset_password(
     """
     auth.reset_password_with_token(body.token, body.password, db)
     return {"message": "Password updated. You can now log in."}
+
+
+# --- Sign in with Google (free OAuth) -------------------------------------- #
+# Zero-config signup/login for users with a Google account. Google users are
+# created pre-verified, so they skip the email-verification hard gate entirely.
+
+
+@router.get("/google/login", summary="Redirect to Google's consent screen")
+def google_login(request: Request):
+    """Start the Google sign-in flow.
+
+    If the server doesn't have Google credentials configured, returns a 503 so
+    the frontend can show a friendly "Google sign-in unavailable" message
+    instead of a broken redirect.
+    """
+    if not auth.google_oauth_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google sign-in isn't configured yet. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (see README: Google Cloud Console).",
+        )
+    base_url = str(request.base_url)
+    return RedirectResponse(auth.google_authorize_url(base_url))
+
+
+@router.get("/google/callback", summary="Google OAuth callback — exchange code & sign in")
+def google_callback(request: Request, db: DbSession):
+    """Exchange the Google authorization code for a verified profile, then
+    create-or-login the user and redirect them to the app with a JWT.
+
+    The token is passed as `?google_token=<jwt>&email=<email>` on the SPA so
+    `index.html` can read it from the URL and store it like a normal login.
+    """
+    error = request.query_params.get("error")
+    if error:
+        # Google refused the user (e.g. "user_cancelled"). Bounce back to the
+        # app with a readable flag instead of an error page.
+        return RedirectResponse(f"/?google-auth-denied")
+
+    code = request.query_params.get("code")
+    if not code:
+        return RedirectResponse("/?google-auth-failed")
+
+    if not auth.google_oauth_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google sign-in isn't configured yet. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (see .env).",
+        )
+
+    try:
+        profile = auth.google_fetch_profile(code, str(request.base_url))
+    except Exception:
+        logger.exception("failed to exchange Google code for profile")
+        return RedirectResponse("/?google-auth-failed")
+
+    email = profile.get("email")
+    verified = profile.get("verified_email", False)
+    if not email or not verified:
+        return RedirectResponse("/?google-email-not-verified")
+
+    # Create-or-load the user. Google users are always auto-verified.
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if user is None:
+        user = models.User(
+            email=email,
+            hashed_password=auth.dummy_password_hash(),  # no password — Google-only
+            is_verified=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    token = create_access_token({"sub": str(user.id)})
+    # Return the token + email as query params so the SPA can pick them up.
+    params = urllib.parse.urlencode({"google_token": token, "email": email})
+    return RedirectResponse(f"/?{params}")

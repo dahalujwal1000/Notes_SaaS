@@ -4,7 +4,7 @@
 build responses directly from SQLAlchemy ORM objects.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -110,6 +110,38 @@ class TaskOut(BaseModel):
     title: str
     status: str
     position: float
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+# -------------------------------- Events --------------------------------- #
+
+class EventCreate(BaseModel):
+    """POST /events body."""
+
+    title: str = Field(min_length=1, max_length=255, examples=["Design review"])
+    description: str = Field(default="", max_length=2000)
+    event_date: date = Field(examples=["2026-09-15"])
+
+
+class EventUpdate(BaseModel):
+    """PATCH /events/{id} body — partial update."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    event_date: date | None = None
+
+
+class EventOut(BaseModel):
+    """Event representation returned by every events route."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    description: str
+    event_date: date
     user_id: int
     created_at: datetime
     updated_at: datetime

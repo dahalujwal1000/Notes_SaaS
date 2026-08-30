@@ -44,6 +44,11 @@ const els = {
   saveStatus: $("save-status"), modeToggle: $("mode-toggle"),
   deleteBtn: $("delete-btn"),
   floatStack: $("float-stack"),
+  eventList: $("event-list"), addEventBtn: $("add-event-btn"),
+  eventModal: $("event-modal"), eventForm: $("event-form"),
+  eventTitle: $("event-title"), eventDesc: $("event-desc"),
+  eventDate: $("event-date"), eventError: $("event-error"),
+  eventCancel: $("event-cancel"), eventModalClose: $("event-modal-close"),
 };
 
 const state = {
@@ -51,7 +56,7 @@ const state = {
   email: localStorage.getItem(EMAIL_KEY) || null,
   view: "home",
   notes: [], selectedId: null, mode: "edit",
-  tasks: [], boardTab: "board", taskFilter: "",
+  tasks: [], events: [], boardTab: "board", taskFilter: "",
   sortMode: "manual",
   dismissed: new Set(),
 };
@@ -156,7 +161,7 @@ async function enterApp() {
   els.appView.hidden = false;
   els.userEmail.textContent = state.email;
   switchView("home");
-  await Promise.allSettled([loadTasks(), refreshNotes()]);
+  await Promise.allSettled([loadTasks(), refreshNotes(), loadEvents()]);
 }
 
 /* ---------------- view switching ---------------- */
@@ -719,6 +724,152 @@ function buildFloatCard(item) {
   card.append(avatar, text, close);
   return card;
 }
+
+/* ---------------- events (sidebar: Upcoming events) ---------------- */
+
+async function loadEvents() {
+  state.events = await api("/events");
+  renderEvents();
+}
+
+function daysUntil(isoDate) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(isoDate + "T00:00:00");
+  return Math.round((target - today) / 86400000);
+}
+
+function remainingLabel(days) {
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days < 0) return `${Math.abs(days)}d overdue`;
+  return `in ${days}d`;
+}
+
+function formatDateOnly(isoDate) {
+  return new Date(isoDate + "T00:00:00").toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function renderEvents() {
+  els.eventList.textContent = "";
+  const sorted = [...state.events].sort((a, b) => {
+    if (a.event_date !== b.event_date) return a.event_date < b.event_date ? -1 : 1;
+    return a.id - b.id;
+  });
+
+  if (!sorted.length) {
+    const empty = document.createElement("p");
+    empty.className = "event-empty";
+    empty.textContent = "No events yet — click + to add one.";
+    els.eventList.appendChild(empty);
+    return;
+  }
+  for (const event of sorted) {
+    els.eventList.appendChild(buildEventItem(event));
+  }
+}
+
+function buildEventItem(event) {
+  const days = daysUntil(event.event_date);
+
+  const item = document.createElement("div");
+  item.className = "event-item";
+
+  const icon = document.createElement("span");
+  icon.className = "si-icon";
+  icon.textContent = "📅";
+
+  const body = document.createElement("div");
+  body.className = "event-body";
+
+  const title = document.createElement("span");
+  title.className = "event-title";
+  title.textContent = event.title;
+  if (event.description) title.title = event.description;
+
+  const meta = document.createElement("div");
+  meta.className = "event-meta";
+
+  const when = document.createElement("span");
+  when.textContent = formatDateOnly(event.event_date);
+
+  const chip = document.createElement("span");
+  chip.className =
+    "chip" + (days === 0 || days === 1 ? " soon" : days < 0 ? " overdue" : "");
+  chip.textContent = remainingLabel(days);
+
+  meta.append(when, chip);
+  body.append(title, meta);
+
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "event-del";
+  del.textContent = "✕";
+  del.title = "Delete event";
+  del.addEventListener("click", async () => {
+    if (!confirm(`Delete "${event.title}"?`)) return;
+    try {
+      await api("/events/" + event.id, { method: "DELETE" });
+      await loadEvents();
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
+  item.append(icon, body, del);
+  return item;
+}
+
+function openEventModal() {
+  els.eventForm.reset();
+  els.eventError.hidden = true;
+  const today = new Date();
+  const iso =
+    `${today.getFullYear()}-` +
+    `${String(today.getMonth() + 1).padStart(2, "0")}-` +
+    `${String(today.getDate()).padStart(2, "0")}`;
+  els.eventDate.value = iso;
+  els.eventModal.hidden = false;
+  els.eventTitle.focus();
+}
+
+function closeEventModal() {
+  els.eventModal.hidden = true;
+}
+
+async function handleEventSubmit(event) {
+  event.preventDefault();
+  els.eventError.hidden = true;
+  try {
+    await api("/events", {
+      method: "POST",
+      body: {
+        title: els.eventTitle.value.trim(),
+        description: els.eventDesc.value.trim(),
+        event_date: els.eventDate.value,
+      },
+    });
+    closeEventModal();
+    await loadEvents();
+  } catch (err) {
+    els.eventError.textContent = err.message || "Could not add event.";
+    els.eventError.hidden = false;
+  }
+}
+
+els.addEventBtn.addEventListener("click", openEventModal);
+els.eventCancel.addEventListener("click", closeEventModal);
+els.eventModalClose.addEventListener("click", closeEventModal);
+els.eventModal.addEventListener("click", (event) => {
+  if (event.target === els.eventModal) closeEventModal();
+});
+els.eventForm.addEventListener("submit", handleEventSubmit);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !els.eventModal.hidden) closeEventModal();
+});
 
 /* ---------------- wiring & init ---------------- */
 

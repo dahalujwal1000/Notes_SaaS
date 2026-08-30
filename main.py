@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 import models  # noqa: E402, F401 — imported so create_all() sees every model
 from database import Base, engine  # noqa: E402
-from routers import notes, tasks, users  # noqa: E402
+from routers import events, notes, tasks, users  # noqa: E402
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -61,6 +61,7 @@ app = FastAPI(
 app.include_router(users.router)
 app.include_router(notes.router)
 app.include_router(tasks.router)
+app.include_router(events.router)
 
 
 @app.get("/health", tags=["health"])

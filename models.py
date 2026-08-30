@@ -4,7 +4,9 @@ One User has many Notes. Notes are always queried through the owning
 user's id — the API layer must never trust a client-supplied user id.
 """
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
+from datetime import date
+
+from sqlalchemy import Date, DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -56,6 +58,26 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="todo", index=True)
     position: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class Event(Base):
+    """Calendar event shown in the sidebar's Upcoming events group."""
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    event_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )

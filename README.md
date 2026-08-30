@@ -6,7 +6,7 @@ A production-style **Notes CRUD backend** with JWT authentication — built as a
 
 ## Features
 
-- **SaaS workspace dashboard (new)** — collapsible #FAFAFA sidebar with Upcoming events / Agents & tools / Teamspaces / Private groups, browser-tab view switcher, and a **drag-and-drop Kanban board** (To-do / In progress / In review / Complete) with status dots, emoji avatars, per-column counts, timeline view, search & sort, and floating insight cards
+- **SaaS workspace dashboard (new)** — collapsible #FAFAFA sidebar with **Upcoming events** (add events with name/description/date; shows title, date + "Today / Tomorrow / in Xd" countdown), Agents & tools, Teamspaces / Private groups, browser-tab view switcher, and a **drag-and-drop Kanban board** (To-do / In progress / In review / Complete) with status dots, emoji avatars, per-column counts, timeline view, search & sort, and floating insight cards
 - **Notion-style notes** — sidebar + editor, debounced autosave, search, to-do checkboxes (`- [ ]` syntax)
 - **JWT auth** — signup/login, bcrypt-hashed passwords, 60-minute access tokens
 - **Ownership-scoped notes** — every query filters by the authenticated user's id; no cross-user data leaks (other users' notes return 404, not 403, to avoid id probing)
@@ -72,6 +72,10 @@ Open http://127.0.0.1:8000/docs → click **Authorize** → log in with `email` 
 | POST   | `/tasks`          | JWT  | Create task (201; appends to column) |
 | PATCH  | `/tasks/{id}`     | JWT  | Move / rename (status + position)  |
 | DELETE | `/tasks/{id}`     | JWT  | Delete (204; 404 if not mine)      |
+| GET    | `/events`         | JWT  | List my events (soonest first)     |
+| POST   | `/events`         | JWT  | Create event (name, description, date) |
+| PATCH  | `/events/{id}`    | JWT  | Update event                       |
+| DELETE | `/events/{id}`    | JWT  | Delete (204; 404 if not mine)      |
 
 ### Example requests
 

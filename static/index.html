@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Workspace — Tasks & Notes</title>
-<link rel="stylesheet" href="style.css?v=20260830a">
+<link rel="stylesheet" href="style.css?v=20260830b">
 </head>
 <body>
 
@@ -53,11 +53,12 @@
 
     <nav class="side-scroll">
       <section class="side-group open">
-        <button class="group-head" type="button"><span class="gh-icon">📅</span><span>Upcoming events</span><i class="chev">▾</i></button>
+        <div class="group-head-row">
+          <button class="group-head" type="button"><span class="gh-icon">📅</span><span>Upcoming events</span><i class="chev">▾</i></button>
+          <button id="add-event-btn" class="btn-icon add-event-btn" type="button" title="Add event">+</button>
+        </div>
         <div class="group-body">
-          <div class="side-item static"><span class="si-icon">🎨</span><span class="si-label">Design review</span><span class="when">3:00 PM</span></div>
-          <div class="side-item static"><span class="si-icon">🧭</span><span class="si-label">Sprint planning</span><span class="when">Tomorrow</span></div>
-          <div class="side-item static"><span class="si-icon">📈</span><span class="si-label">Demo day</span><span class="when">Friday</span></div>
+          <div id="event-list"></div>
         </div>
       </section>
 
@@ -143,11 +144,40 @@
     </section>
   </main>
 
+  <!-- Add-event modal -->
+  <div id="event-modal" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title">
+      <header class="modal-head">
+        <h2 id="event-modal-title">Add event</h2>
+        <button id="event-modal-close" class="btn-icon" type="button" title="Close">✕</button>
+      </header>
+      <form id="event-form">
+        <label class="field">
+          <span>Name</span>
+          <input id="event-title" required maxlength="255" placeholder="Design review">
+        </label>
+        <label class="field">
+          <span>Description</span>
+          <textarea id="event-desc" rows="3" maxlength="2000" placeholder="Optional details…"></textarea>
+        </label>
+        <label class="field">
+          <span>Date</span>
+          <input id="event-date" type="date" required>
+        </label>
+        <p id="event-error" class="auth-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" id="event-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add event</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Floating ambient insight cards -->
   <div id="float-stack" class="float-stack" aria-live="polite"></div>
 </div>
 
-<script src="app.js?v=20260830a"></script>
+<script src="app.js?v=20260830b"></script>
 </body>
 </html>
 

@@ -7,34 +7,10 @@ No running server and no ./notes.db needed — conftest.py swaps in an
 isolated SQLite test database and resets the schema for every test.
 """
 
-import uuid
-
 INVALID_AUTH = {"Authorization": "Bearer not-a-valid-token"}
 
-
-# ------------------------------ helpers --------------------------------- #
-
-def unique_email() -> str:
-    return f"user_{uuid.uuid4().hex[:10]}@example.com"
-
-
-def signup(client, email=None, password="supersecret123"):
-    return client.post(
-        "/auth/signup",
-        json={"email": email or unique_email(), "password": password},
-    )
-
-
-def auth_headers(client, email=None, password="supersecret123"):
-    """Create a user, log in, and return Bearer headers for that user."""
-    email = email or unique_email()
-    resp = signup(client, email=email, password=password)
-    assert resp.status_code == 201, resp.text
-    resp = client.post(
-        "/auth/login", data={"username": email, "password": password}
-    )
-    assert resp.status_code == 200, resp.text
-    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+# Helpers live in conftest.py so both test modules share them.
+from conftest import auth_headers, signup, unique_email  # noqa: E402, F401
 
 
 # -------------------------------- auth ----------------------------------- #

@@ -36,3 +36,29 @@ def client():
         yield c
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
+
+
+# ------------------------- shared API helpers --------------------------- #
+
+def unique_email() -> str:
+    import uuid
+    return f"user_{uuid.uuid4().hex[:10]}@example.com"
+
+
+def signup(client, email=None, password="supersecret123"):
+    return client.post(
+        "/auth/signup",
+        json={"email": email or unique_email(), "password": password},
+    )
+
+
+def auth_headers(client, email=None, password="supersecret123"):
+    """Create a user, log in, and return Bearer headers for that user."""
+    email = email or unique_email()
+    resp = signup(client, email=email, password=password)
+    assert resp.status_code == 201, resp.text
+    resp = client.post(
+        "/auth/login", data={"username": email, "password": password}
+    )
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}

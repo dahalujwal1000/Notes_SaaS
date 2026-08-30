@@ -1,15 +1,24 @@
 "use strict";
 
 /* ============================================================
-   Notes — frontend logic.
-   Talks to the FastAPI backend on the same origin: JWT auth,
-   notes CRUD, debounced autosave, Notion-style to-dos.
-   All user data is rendered via textContent (XSS-safe).
+   Workspace dashboard — talks to the FastAPI backend on the
+   same origin. Views: Home (kanban) + Notes (editor).
+   All user data rendered via textContent (XSS-safe).
    ============================================================ */
 
 const API = window.location.origin;
 const TOKEN_KEY = "notes_token";
 const EMAIL_KEY = "notes_email";
+
+const COLUMNS = [
+  { key: "todo",   label: "To-do",       color: "#8B5CF6" },
+  { key: "doing",  label: "In progress", color: "#F59E0B" },
+  { key: "review", label: "In review",   color: "#2F80ED" },
+  { key: "done",   label: "Complete",    color: "#22C55E" },
+];
+
+const AVATARS = ["🦊", "🐼", "🐸", "🦉", "🐙", "🦄", "🐝", "🐳"];
+const AVATAR_BG = ["#FDE9E9", "#E8F0FD", "#E8F8EE", "#FFF4DE", "#F3E8FD", "#DFF6F6"];
 
 const $ = (id) => document.getElementById(id);
 
@@ -20,24 +29,31 @@ const els = {
   authError: $("auth-error"), authSubmit: $("auth-submit"),
   authSwitchText: $("auth-switch-text"), authSwitchBtn: $("auth-switch-btn"),
   authForm: $("auth-form"),
+  sidebar: $("sidebar"), collapseBtn: $("collapse-btn"), mobileMenu: $("mobile-menu"),
+  userEmail: $("user-email"), logoutBtn: $("logout-btn"),
+  crumbPage: $("crumb-page"),
+  searchToggle: $("search-toggle"), boardSearch: $("board-search"), sortBtn: $("sort-btn"),
+  newTaskBtn: $("new-task-btn"), newTaskMenu: $("new-task-menu"),
+  viewHome: $("view-home"), viewNotes: $("view-notes"),
+  board: $("board"), timeline: $("timeline"),
   noteList: $("note-list"), searchInput: $("search-input"),
-  newNoteBtn: $("new-note-btn"), logoutBtn: $("logout-btn"),
-  userEmail: $("user-email"),
+  newNoteBtn: $("new-note-btn"),
   editorEmpty: $("editor-empty"), editorPane: $("editor-pane"),
   noteTitle: $("note-title"), noteContent: $("note-content"),
   notePreview: $("note-preview"), todoProgress: $("todo-progress"),
   saveStatus: $("save-status"), modeToggle: $("mode-toggle"),
-  deleteBtn: $("delete-btn"), mobileMenu: $("mobile-menu"),
-  sidebar: $("sidebar"),
+  deleteBtn: $("delete-btn"),
+  floatStack: $("float-stack"),
 };
 
 const state = {
   token: localStorage.getItem(TOKEN_KEY) || null,
   email: localStorage.getItem(EMAIL_KEY) || null,
-  notes: [],
-  selectedId: null,
-  mode: "edit",     // "edit" | "preview"
-  isSignup: false,
+  view: "home",
+  notes: [], selectedId: null, mode: "edit",
+  tasks: [], boardTab: "board", taskFilter: "",
+  sortMode: "manual",
+  dismissed: new Set(),
 };
 
 /* ---------------- API helpers ---------------- */
@@ -55,7 +71,6 @@ async function api(path, { method = "GET", body, form } = {}) {
 
   const resp = await fetch(API + path, { method, headers, body: payload });
 
-  // Expired/invalid token mid-session: drop to the login screen.
   if (resp.status === 401 && state.token && !path.startsWith("/auth")) {
     logout();
     throw new Error("Session expired — please sign in again.");
@@ -81,7 +96,7 @@ function setAuthMode(signup) {
   state.isSignup = signup;
   els.authTitle.textContent = signup ? "Create your workspace" : "Welcome back";
   els.authSub.textContent = signup
-    ? "A few seconds to your first note."
+    ? "A few seconds to your first task."
     : "Sign in to your workspace.";
   els.authSubmit.textContent = signup ? "Sign up" : "Sign in";
   els.authSwitchText.textContent = signup ? "Already have an account?" : "New here?";
@@ -127,6 +142,7 @@ function logout() {
   state.token = null;
   state.email = null;
   state.notes = [];
+  state.tasks = [];
   state.selectedId = null;
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(EMAIL_KEY);
@@ -139,10 +155,24 @@ async function enterApp() {
   els.authView.hidden = true;
   els.appView.hidden = false;
   els.userEmail.textContent = state.email;
-  await refreshNotes();
+  switchView("home");
+  await Promise.allSettled([loadTasks(), refreshNotes()]);
 }
 
-/* ---------------- notes list ---------------- */
+/* ---------------- view switching ---------------- */
+
+function switchView(view) {
+  state.view = view;
+  document.querySelectorAll(".tab").forEach((tab) =>
+    tab.classList.toggle("active", tab.dataset.view === view)
+  );
+  els.viewHome.hidden = view !== "home";
+  els.viewNotes.hidden = view !== "notes";
+  els.crumbPage.textContent = view === "home" ? "Home · Product" : "Notes";
+  if (view === "home") renderBoard();
+}
+
+/* ---------------- notes logic (ported) ---------------- */
 
 async function refreshNotes({ selectFirst = true } = {}) {
   const query = els.searchInput.value.trim();
@@ -195,8 +225,6 @@ function firstLine(text) {
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
-
-/* ---------------- editor ---------------- */
 
 function selectNote(id) {
   state.selectedId = id;
@@ -272,7 +300,7 @@ async function deleteNote() {
   await refreshNotes();
 }
 
-/* ---------------- search ---------------- */
+/* ---------------- note search & to-dos (ported) ---------------- */
 
 let searchTimer = null;
 els.searchInput.addEventListener("input", () => {
@@ -285,8 +313,6 @@ els.searchInput.addEventListener("input", () => {
     renderList();
   }, 250);
 });
-
-/* ---------------- to-dos & preview ---------------- */
 
 function setMode(mode) {
   state.mode = mode;
@@ -354,11 +380,370 @@ function updateTodoProgress() {
   els.todoProgress.append(label, bar);
 }
 
+/* ---------------- kanban board ---------------- */
+
+async function loadTasks() {
+  state.tasks = await api("/tasks");
+  renderBoard();
+  renderFloatStack();
+}
+
+function tasksInColumn(statusKey) {
+  const inColumn = state.tasks.filter((t) => t.status === statusKey);
+  return [...inColumn].sort((a, b) =>
+    state.sortMode === "title"
+      ? a.title.localeCompare(b.title)
+      : a.position - b.position
+  );
+}
+
+function avatarFor(task) {
+  return {
+    emoji: AVATARS[task.id % AVATARS.length],
+    bg: AVATAR_BG[task.id % AVATAR_BG.length],
+  };
+}
+
+function matchesFilter(task) {
+  if (!state.taskFilter) return true;
+  return task.title.toLowerCase().includes(state.taskFilter.toLowerCase());
+}
+
+function renderBoard() {
+  els.board.textContent = "";
+  for (const column of COLUMNS) {
+    els.board.appendChild(buildColumn(column));
+  }
+}
+
+function buildColumn(column) {
+  const col = document.createElement("div");
+  col.className = "column";
+  col.dataset.status = column.key;
+
+  const head = document.createElement("div");
+  head.className = "column-head";
+  const dot = document.createElement("span");
+  dot.className = "status-dot";
+  dot.style.background = column.color;
+  const label = document.createElement("span");
+  label.textContent = column.label;
+  const count = document.createElement("span");
+  count.className = "column-count";
+  count.textContent = String(tasksInColumn(column.key).filter(matchesFilter).length);
+  head.append(dot, label, count);
+
+  const body = document.createElement("div");
+  body.className = "column-body";
+  for (const task of tasksInColumn(column.key).filter(matchesFilter)) {
+    body.appendChild(buildCard(task));
+  }
+  body.appendChild(buildGhost(column.key));
+
+  col.append(head, body);
+
+  col.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    col.classList.add("drop-target");
+  });
+  col.addEventListener("dragleave", (event) => {
+    if (!col.contains(event.relatedTarget)) col.classList.remove("drop-target");
+  });
+  col.addEventListener("drop", (event) => {
+    event.preventDefault();
+    col.classList.remove("drop-target");
+    const id = Number(event.dataTransfer.getData("text/plain"));
+    if (!id) return;
+    const cardEl = event.target.closest(".task-card");
+    const beforeId =
+      cardEl && Number(cardEl.dataset.id) !== id ? Number(cardEl.dataset.id) : null;
+    moveTask(id, column.key, beforeId);
+  });
+
+  return col;
+}
+
+function buildCard(task) {
+  const card = document.createElement("div");
+  card.className = "task-card";
+  card.draggable = true;
+  card.dataset.id = task.id;
+
+  const look = avatarFor(task);
+  const avatar = document.createElement("span");
+  avatar.className = "task-avatar";
+  avatar.textContent = look.emoji;
+  avatar.style.background = look.bg;
+
+  const title = document.createElement("span");
+  title.className = "task-title";
+  title.textContent = task.title;
+
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "task-del";
+  del.textContent = "✕";
+  del.title = "Delete task";
+  del.addEventListener("click", (event) => {
+    event.stopPropagation();
+    deleteTask(task.id);
+  });
+
+  card.append(avatar, title, del);
+  card.addEventListener("dragstart", (event) => {
+    event.dataTransfer.setData("text/plain", String(task.id));
+    event.dataTransfer.effectAllowed = "move";
+    card.classList.add("dragging");
+  });
+  card.addEventListener("dragend", () => card.classList.remove("dragging"));
+  return card;
+}
+
+function buildGhost(statusKey) {
+  const ghost = document.createElement("button");
+  ghost.type = "button";
+  ghost.className = "ghost-add";
+  ghost.textContent = "+ New";
+  ghost.addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.className = "ghost-input";
+    input.placeholder = "Task title, then Enter";
+    ghost.replaceWith(input);
+    input.focus();
+    const finish = () => input.replaceWith(ghost);
+    input.addEventListener("keydown", async (event) => {
+      if (event.key === "Enter") {
+        const title = input.value.trim();
+        if (!title) { finish(); return; }
+        try {
+          await api("/tasks", { method: "POST", body: { title, status: statusKey } });
+          await loadTasks();
+        } catch (err) {
+          console.error(err);
+          finish();
+        }
+      } else if (event.key === "Escape") {
+        finish();
+      }
+    });
+    input.addEventListener("blur", finish);
+  });
+  return ghost;
+}
+
+function computePosition(statusKey, beforeId) {
+  const column = tasksInColumn(statusKey);
+  if (beforeId === null) {
+    return column.length ? column[column.length - 1].position + 1024 : 1024;
+  }
+  const index = column.findIndex((t) => t.id === beforeId);
+  if (index === -1) return 1024;
+  const target = column[index];
+  const previous = index > 0 ? column[index - 1] : null;
+  return previous ? (previous.position + target.position) / 2 : target.position - 1024;
+}
+
+async function moveTask(id, statusKey, beforeId) {
+  const position = computePosition(statusKey, beforeId);
+  const task = state.tasks.find((t) => t.id === id);
+  if (task && task.status === statusKey && task.position === position) return;
+
+  // Optimistic move, then reconcile with the server.
+  if (task) { task.status = statusKey; task.position = position; }
+  renderBoard();
+  try {
+    await api("/tasks/" + id, { method: "PATCH", body: { status: statusKey, position } });
+    await loadTasks();
+  } catch (err) {
+    console.error(err);
+    await loadTasks();
+  }
+}
+
+async function deleteTask(id) {
+  if (!confirm("Delete this task?")) return;
+  try {
+    await api("/tasks/" + id, { method: "DELETE" });
+    state.tasks = state.tasks.filter((t) => t.id !== id);
+    renderBoard();
+    renderFloatStack();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+/* ---------------- timeline view ---------------- */
+
+function setBoardTab(tab) {
+  state.boardTab = tab;
+  document.querySelectorAll(".ptab").forEach((button) =>
+    button.classList.toggle("active", button.dataset.boardTab === tab)
+  );
+  els.board.hidden = tab !== "board";
+  els.timeline.hidden = tab !== "timeline";
+  if (tab === "timeline") renderTimeline();
+}
+
+function renderTimeline() {
+  els.timeline.textContent = "";
+  if (!state.tasks.length) {
+    const empty = document.createElement("p");
+    empty.className = "tl-empty";
+    empty.textContent = "No tasks yet — add one from the board.";
+    els.timeline.appendChild(empty);
+    return;
+  }
+  for (const column of COLUMNS) {
+    const items = tasksInColumn(column.key).filter(matchesFilter);
+    if (!items.length) continue;
+
+    const group = document.createElement("div");
+    group.className = "tl-group";
+
+    const head = document.createElement("div");
+    head.className = "tl-head";
+    const dot = document.createElement("span");
+    dot.className = "status-dot";
+    dot.style.background = column.color;
+    const label = document.createElement("span");
+    label.textContent = `${column.label} · ${items.length}`;
+    head.append(dot, label);
+    group.appendChild(head);
+
+    for (const task of items) {
+      const row = document.createElement("div");
+      row.className = "tl-row";
+
+      const look = avatarFor(task);
+      const avatar = document.createElement("span");
+      avatar.className = "task-avatar";
+      avatar.textContent = look.emoji;
+      avatar.style.background = look.bg;
+
+      const title = document.createElement("span");
+      title.className = "task-title";
+      title.textContent = task.title;
+
+      const when = document.createElement("span");
+      when.className = "tl-when";
+      when.textContent = formatDate(task.updated_at);
+
+      row.append(avatar, title, when);
+      group.appendChild(row);
+    }
+    els.timeline.appendChild(group);
+  }
+}
+
+/* ---------------- floating insight cards ---------------- */
+
+function renderFloatStack() {
+  els.floatStack.textContent = "";
+  const count = (statusKey) => state.tasks.filter((t) => t.status === statusKey).length;
+
+  const insights = [];
+  if (!state.tasks.length) {
+    insights.push({
+      emoji: "✨", bg: AVATAR_BG[4],
+      title: "Empty board",
+      text: "Create your first task to get going.",
+    });
+  } else {
+    const review = count("review");
+    const doing = count("doing");
+    const done = count("done");
+    const todo = count("todo");
+    if (review) {
+      insights.push({
+        emoji: "👀", bg: AVATAR_BG[1],
+        title: `${review} task${review > 1 ? "s" : ""} in review`,
+        text: "Worth a pass before shipping.",
+      });
+    }
+    if (doing) {
+      insights.push({
+        emoji: "🔥", bg: AVATAR_BG[3],
+        title: `${doing} in progress`,
+        text: "Momentum looks good — keep going.",
+      });
+    }
+    if (done) {
+      insights.push({
+        emoji: "🎉", bg: AVATAR_BG[2],
+        title: `${done} completed`,
+        text: "Nice work shipping these.",
+      });
+    }
+    if (todo >= 3) {
+      insights.push({
+        emoji: "📝", bg: AVATAR_BG[0],
+        title: `${todo} to-dos queued`,
+        text: "Maybe pick the top one today?",
+      });
+    }
+  }
+
+  for (const item of insights.slice(0, 3)) {
+    if (state.dismissed.has(item.title)) continue;
+    els.floatStack.appendChild(buildFloatCard(item));
+  }
+}
+
+function buildFloatCard(item) {
+  const card = document.createElement("div");
+  card.className = "float-card";
+
+  const avatar = document.createElement("span");
+  avatar.className = "float-avatar";
+  avatar.textContent = item.emoji;
+  avatar.style.background = item.bg;
+
+  const text = document.createElement("div");
+  text.className = "float-text";
+  const heading = document.createElement("b");
+  heading.textContent = item.title;
+  const body = document.createElement("span");
+  body.textContent = item.text;
+  text.append(heading, body);
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "float-close";
+  close.textContent = "✕";
+  close.title = "Dismiss";
+  close.addEventListener("click", () => {
+    state.dismissed.add(item.title);
+    card.remove();
+  });
+
+  card.append(avatar, text, close);
+  return card;
+}
+
 /* ---------------- wiring & init ---------------- */
 
 els.authForm.addEventListener("submit", handleAuth);
 els.authSwitchBtn.addEventListener("click", () => setAuthMode(!state.isSignup));
 els.logoutBtn.addEventListener("click", logout);
+
+document.querySelectorAll(".tab").forEach((tab) =>
+  tab.addEventListener("click", () => switchView(tab.dataset.view))
+);
+document.querySelectorAll(".side-item[data-view]").forEach((item) =>
+  item.addEventListener("click", () => switchView(item.dataset.view))
+);
+document.querySelectorAll(".group-head").forEach((head) =>
+  head.addEventListener("click", () =>
+    head.closest(".side-group").classList.toggle("open")
+  )
+);
+
+els.collapseBtn.addEventListener("click", () => {
+  els.sidebar.classList.toggle("collapsed");
+  els.collapseBtn.textContent = els.sidebar.classList.contains("collapsed") ? "»" : "«";
+});
+els.mobileMenu.addEventListener("click", () => els.sidebar.classList.toggle("open"));
+
 els.newNoteBtn.addEventListener("click", () => createNote().catch(showAuthError));
 els.deleteBtn.addEventListener("click", () => deleteNote().catch(showAuthError));
 els.modeToggle.addEventListener("click", () =>
@@ -376,7 +761,50 @@ els.noteContent.addEventListener("keydown", (event) => {
     saveNote();
   }
 });
-els.mobileMenu.addEventListener("click", () => els.sidebar.classList.toggle("open"));
+
+els.searchToggle.addEventListener("click", () => {
+  els.boardSearch.hidden = !els.boardSearch.hidden;
+  if (!els.boardSearch.hidden) {
+    els.boardSearch.focus();
+  } else {
+    state.taskFilter = "";
+    els.boardSearch.value = "";
+    renderBoard();
+  }
+});
+els.boardSearch.addEventListener("input", () => {
+  state.taskFilter = els.boardSearch.value.trim();
+  renderBoard();
+});
+els.sortBtn.addEventListener("click", () => {
+  state.sortMode = state.sortMode === "manual" ? "title" : "manual";
+  els.sortBtn.title = "Sort: " + (state.sortMode === "manual" ? "manual order" : "title (A–Z)");
+  renderBoard();
+});
+els.newTaskBtn.addEventListener("click", () => {
+  els.newTaskMenu.hidden = !els.newTaskMenu.hidden;
+});
+els.newTaskMenu.querySelectorAll("button").forEach((button) =>
+  button.addEventListener("click", async () => {
+    els.newTaskMenu.hidden = true;
+    try {
+      await api("/tasks", {
+        method: "POST",
+        body: { title: "New task", status: button.dataset.status },
+      });
+      setBoardTab("board");
+      await loadTasks();
+    } catch (err) {
+      console.error(err);
+    }
+  })
+);
+document.querySelectorAll(".ptab").forEach((button) =>
+  button.addEventListener("click", () => setBoardTab(button.dataset.boardTab))
+);
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".new-wrap")) els.newTaskMenu.hidden = true;
+});
 
 (async function init() {
   if (state.token) {
@@ -389,5 +817,8 @@ els.mobileMenu.addEventListener("click", () => els.sidebar.classList.toggle("ope
   els.authView.hidden = false;
   setAuthMode(false);
 })();
+
+
+
 
 

@@ -6,7 +6,8 @@ A production-style **Notes CRUD backend** with JWT authentication — built as a
 
 ## Features
 
-- **Notion-style web UI** — login/signup, sidebar + editor, debounced autosave, search, and to-do checkboxes (`- [ ]` syntax) — plain HTML/CSS/JS served by the API itself, no build step
+- **SaaS workspace dashboard (new)** — collapsible #FAFAFA sidebar with Upcoming events / Agents & tools / Teamspaces / Private groups, browser-tab view switcher, and a **drag-and-drop Kanban board** (To-do / In progress / In review / Complete) with status dots, emoji avatars, per-column counts, timeline view, search & sort, and floating insight cards
+- **Notion-style notes** — sidebar + editor, debounced autosave, search, to-do checkboxes (`- [ ]` syntax)
 - **JWT auth** — signup/login, bcrypt-hashed passwords, 60-minute access tokens
 - **Ownership-scoped notes** — every query filters by the authenticated user's id; no cross-user data leaks (other users' notes return 404, not 403, to avoid id probing)
 - **Full CRUD REST API** with consistent Pydantic `response_model`s and explicit status codes (201 / 400 / 401 / 404 / 204)
@@ -30,11 +31,13 @@ Notes_SaaS/
 ├── auth.py              # bcrypt hashing, JWT create/verify, get_current_user()
 ├── routers/
 │   ├── users.py         # POST /auth/signup, POST /auth/login
-│   └── notes.py         # /notes CRUD (all routes auth-protected)
+│   ├── notes.py         # /notes CRUD (all routes auth-protected)
+│   └── tasks.py         # /tasks kanban CRUD + move (auth-protected)
 ├── smoke_test.py        # End-to-end test against a live server (stdlib only)
 ├── tests/               # pytest suite — API tested in-process, isolated DB
 │   ├── conftest.py
-│   └── test_api.py
+│   ├── test_api.py      # auth + notes
+│   └── test_tasks.py    # kanban tasks
 └── requirements.txt     # Pinned runtime deps (see requirements-dev.txt for tests)
 ```
 
@@ -65,6 +68,10 @@ Open http://127.0.0.1:8000/docs → click **Authorize** → log in with `email` 
 | GET    | `/notes/{id}`     | JWT  | Get my note (404 if not mine)      |
 | PUT    | `/notes/{id}`     | JWT  | Partial update (404 if not mine)   |
 | DELETE | `/notes/{id}`     | JWT  | Delete (204; 404 if not mine)      |
+| GET    | `/tasks`          | JWT  | List my tasks (`?status=` filter)  |
+| POST   | `/tasks`          | JWT  | Create task (201; appends to column) |
+| PATCH  | `/tasks/{id}`     | JWT  | Move / rename (status + position)  |
+| DELETE | `/tasks/{id}`     | JWT  | Delete (204; 404 if not mine)      |
 
 ### Example requests
 

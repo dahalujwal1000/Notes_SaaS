@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Notes — your workspace</title>
+<title>Workspace — Tasks & Notes</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
 <!-- ================= Auth view ================= -->
 <section id="auth-view" class="auth-view" hidden>
   <div class="auth-card">
-    <div class="auth-logo">📝</div>
+    <div class="auth-logo">🟣</div>
     <h1 id="auth-title">Welcome back</h1>
     <p class="auth-sub" id="auth-sub">Sign in to your workspace.</p>
     <form id="auth-form" autocomplete="on">
@@ -35,38 +35,128 @@
 
 <!-- ================= App view ================= -->
 <div id="app-view" class="app" hidden>
+
   <aside class="sidebar" id="sidebar">
-    <header class="sidebar-head">
-      <span class="workspace">📝 Notes</span>
-      <button id="logout-btn" class="btn-link small" type="button">Log out</button>
+    <header class="ws-head">
+      <span class="ws-avatar">🟪</span>
+      <div class="ws-names">
+        <strong>My Workspace</strong>
+        <span class="ws-plan">Free plan</span>
+      </div>
+      <button id="collapse-btn" class="btn-icon" type="button" title="Collapse sidebar">«</button>
     </header>
-    <button id="new-note-btn" class="btn btn-primary btn-block" type="button">+ New note</button>
-    <input type="search" id="search-input" class="search" placeholder="Search notes…" autocomplete="off">
-    <nav id="note-list" class="note-list" aria-label="Notes"></nav>
-    <footer class="sidebar-foot" id="user-email"></footer>
+
+    <div class="tab-row" role="tablist">
+      <button class="tab active" data-view="home" type="button">Home</button>
+      <button class="tab" data-view="notes" type="button">Notes</button>
+    </div>
+
+    <nav class="side-scroll">
+      <section class="side-group open">
+        <button class="group-head" type="button"><span class="gh-icon">📅</span><span>Upcoming events</span><i class="chev">▾</i></button>
+        <div class="group-body">
+          <div class="side-item static"><span class="si-icon">🎨</span><span class="si-label">Design review</span><span class="when">3:00 PM</span></div>
+          <div class="side-item static"><span class="si-icon">🧭</span><span class="si-label">Sprint planning</span><span class="when">Tomorrow</span></div>
+          <div class="side-item static"><span class="si-icon">📈</span><span class="si-label">Demo day</span><span class="when">Friday</span></div>
+        </div>
+      </section>
+
+      <section class="side-group open">
+        <button class="group-head" type="button"><span class="gh-icon">🤖</span><span>Agents &amp; tools</span><i class="chev">▾</i></button>
+        <div class="group-body">
+          <div class="side-item static"><span class="si-icon">✍️</span><span class="si-label">Writer agent</span></div>
+          <div class="side-item static"><span class="si-icon">📊</span><span class="si-label">Summarizer</span></div>
+          <div class="side-item static"><span class="si-icon">⏰</span><span class="si-label">Reminder bot</span></div>
+        </div>
+      </section>
+
+      <section class="side-group open">
+        <button class="group-head" type="button"><span class="gh-icon">👥</span><span>Teamspaces</span><i class="chev">▾</i></button>
+        <div class="group-body">
+          <button class="side-item" data-view="home" type="button"><span class="si-icon">🚀</span><span class="si-label">Product board</span></button>
+        </div>
+      </section>
+
+      <section class="side-group open">
+        <button class="group-head" type="button"><span class="gh-icon">🔒</span><span>Private</span><i class="chev">▾</i></button>
+        <div class="group-body">
+          <button class="side-item" data-view="notes" type="button"><span class="si-icon">📝</span><span class="si-label">My notes</span></button>
+        </div>
+      </section>
+    </nav>
+
+    <footer class="sidebar-foot">
+      <span id="user-email" class="foot-email"></span>
+      <button id="logout-btn" class="btn-link small" type="button">Log out</button>
+    </footer>
   </aside>
 
-  <main class="editor" id="editor">
-    <div id="editor-empty" class="editor-empty">
-      <p>Select a note on the left, or create a new one.</p>
-    </div>
-    <div id="editor-pane" class="editor-pane" hidden>
-      <header class="editor-toolbar">
-        <button id="mobile-menu" class="btn-icon" type="button" aria-label="Toggle sidebar">☰</button>
-        <span id="save-status" class="save-status"></span>
-        <span class="toolbar-spacer"></span>
-        <button id="mode-toggle" class="btn btn-ghost" type="button">Preview</button>
-        <button id="delete-btn" class="btn btn-ghost danger" type="button">Delete</button>
+  <main class="main">
+    <header class="main-top">
+      <button id="mobile-menu" class="btn-icon" type="button" aria-label="Toggle sidebar">☰</button>
+      <nav class="breadcrumb"><span>Workspace</span><span class="crumb-sep">/</span><b id="crumb-page">Home · Product</b></nav>
+      <div class="top-actions">
+        <button id="search-toggle" class="btn-icon" type="button" title="Search tasks">🔍</button>
+        <input id="board-search" class="board-search" placeholder="Filter tasks…" hidden>
+        <button id="sort-btn" class="btn-icon" type="button" title="Sort: manual order">⇅</button>
+        <div class="new-wrap">
+          <button id="new-task-btn" class="btn btn-primary" type="button">New ▾</button>
+          <div id="new-task-menu" class="menu" hidden>
+            <button data-status="todo" type="button">To-do</button>
+            <button data-status="doing" type="button">In progress</button>
+            <button data-status="review" type="button">In review</button>
+            <button data-status="done" type="button">Complete</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- HOME: kanban board -->
+    <section id="view-home" class="view">
+      <header class="page-head">
+        <h1 class="page-title"><span class="page-icon">📋</span> Company tasks</h1>
+        <div class="page-tabs">
+          <button class="ptab active" data-board-tab="board" type="button">Board</button>
+          <button class="ptab" data-board-tab="timeline" type="button">Timeline</button>
+        </div>
       </header>
-      <input id="note-title" class="note-title" placeholder="Untitled" maxlength="255" autocomplete="off">
-      <div id="todo-progress" class="todo-progress" hidden></div>
-      <textarea id="note-content" class="note-content" spellcheck="true"
-        placeholder="Write something… Type '- [ ] your task' to start a to-do list."></textarea>
-      <div id="note-preview" class="note-preview" hidden></div>
-    </div>
+
+      <div id="board" class="board"></div>
+      <div id="timeline" class="timeline" hidden></div>
+    </section>
+
+    <!-- NOTES: editor -->
+    <section id="view-notes" class="view" hidden>
+      <div class="notes-wrap">
+        <div class="notes-side">
+          <button id="new-note-btn" class="btn btn-primary btn-block" type="button">+ New note</button>
+          <input type="search" id="search-input" class="search" placeholder="Search notes…" autocomplete="off">
+          <nav id="note-list" class="note-list" aria-label="Notes"></nav>
+        </div>
+        <div class="notes-editor">
+          <div id="editor-empty" class="editor-empty"><p>Select a note, or create one.</p></div>
+          <div id="editor-pane" class="editor-pane" hidden>
+            <header class="editor-toolbar">
+              <span id="save-status" class="save-status"></span>
+              <span class="toolbar-spacer"></span>
+              <button id="mode-toggle" class="btn btn-ghost" type="button">Preview</button>
+              <button id="delete-btn" class="btn btn-ghost danger" type="button">Delete</button>
+            </header>
+            <input id="note-title" class="note-title" placeholder="Untitled" maxlength="255" autocomplete="off">
+            <div id="todo-progress" class="todo-progress" hidden></div>
+            <textarea id="note-content" class="note-content" spellcheck="true" placeholder="Write something… Type '- [ ] your task' to start a to-do list."></textarea>
+            <div id="note-preview" class="note-preview" hidden></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
+
+  <!-- Floating ambient insight cards -->
+  <div id="float-stack" class="float-stack" aria-live="polite"></div>
 </div>
 
 <script src="app.js"></script>
 </body>
 </html>
+

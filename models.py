@@ -4,7 +4,7 @@ One User has many Notes. Notes are always queried through the owning
 user's id — the API layer must never trust a client-supplied user id.
 """
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -42,3 +42,26 @@ class Note(Base):
     )
 
     owner: Mapped["User"] = relationship(back_populates="notes")
+
+
+class Task(Base):
+    """Kanban task. `status` is one of: todo | doing | review | done.
+    `position` is a float ordering key inside a column — moving a card
+    between/into neighbors writes the midpoint, so reordering never
+    touches other rows."""
+
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="todo", index=True)
+    position: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

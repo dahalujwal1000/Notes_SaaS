@@ -74,3 +74,42 @@ class NoteOut(BaseModel):
     user_id: int
     created_at: datetime
     updated_at: datetime
+
+
+# -------------------------------- Tasks --------------------------------- #
+
+# Kanban columns, in board order.
+TASK_STATUSES = ("todo", "doing", "review", "done")
+_STATUS_PATTERN = "^(todo|doing|review|done)$"
+
+
+class TaskCreate(BaseModel):
+    """POST /tasks body."""
+
+    title: str = Field(min_length=1, max_length=255, examples=["Ship the landing page"])
+    status: str = Field(default="todo", pattern=_STATUS_PATTERN)
+    position: float | None = Field(
+        default=None, description="Ordering key inside the column; server appends if omitted."
+    )
+
+
+class TaskUpdate(BaseModel):
+    """PATCH /tasks/{id} body — partial update (status moves, reorders, renames)."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    status: str | None = Field(default=None, pattern=_STATUS_PATTERN)
+    position: float | None = Field(default=None)
+
+
+class TaskOut(BaseModel):
+    """Task representation returned by every tasks route."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    status: str
+    position: float
+    user_id: int
+    created_at: datetime
+    updated_at: datetime

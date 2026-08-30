@@ -33,6 +33,17 @@ from routers import notes, tasks, users  # noqa: E402
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
+class NoCacheStaticFiles(StaticFiles):
+    """Static assets stay cache-bustable: `Cache-Control: no-cache` forces
+    the browser to revalidate via ETag on every load, so a fresh deploy is
+    picked up immediately instead of heuristically serving stale CSS/JS."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     """Create tables on startup if they don't exist (dev convenience)."""
@@ -59,4 +70,4 @@ def health():
 
 
 # Static UI last, so API routes always win over the SPA catch-all mount.
-app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+app.mount("/", NoCacheStaticFiles(directory=str(STATIC_DIR), html=True), name="static")

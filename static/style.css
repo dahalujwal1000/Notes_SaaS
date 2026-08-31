@@ -571,8 +571,9 @@ input, textarea { font: inherit; color: inherit; }
     transition: transform var(--speed) ease;
     box-shadow: var(--card-shadow-hover);
   }
-  .sidebar.open { transform: none; }
-  .sidebar.collapsed { width: var(--sidebar-w); }
+    .sidebar.open { transform: none; }
+  /* On mobile: hide via off-canvas transform; collapsed just means hidden */
+  .sidebar.collapsed { transform: translateX(-100%); }
   #mobile-menu { display: inline-flex; }
   #collapse-btn { display: none; }
   .page-head { padding: 16px 16px 0; }

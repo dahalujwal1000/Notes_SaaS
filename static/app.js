@@ -1017,7 +1017,25 @@ els.collapseBtn.addEventListener("click", () => {
   els.collapseBtn.textContent = collapsed ? "»" : "«";
   els.collapseBtn.title = collapsed ? "Expand sidebar" : "Collapse sidebar";
 });
-els.mobileMenu.addEventListener("click", () => els.sidebar.classList.toggle("open"));
+els.mobileMenu.addEventListener("click", () => {
+  // On mobile, toggle the 'open' class (controls visibility via transform)
+  els.sidebar.classList.toggle("open");
+});
+
+// Close mobile sidebar when clicking outside
+document.addEventListener("click", (e) => {
+  if (window.innerWidth <= 820 && !els.sidebar.contains(e.target) && !els.mobileMenu.contains(e.target)) {
+    els.sidebar.classList.remove("open");
+  }
+});
+
+// Close mobile sidebar on resize to desktop
+window.addEventListener("resize", () => {
+  if (window.innerWidth > 820) {
+    els.sidebar.classList.remove("open");
+    els.sidebar.classList.remove("collapsed");
+  }
+});
 
 els.newNoteBtn.addEventListener("click", () => createNote().catch(showAuthError));
 els.deleteBtn.addEventListener("click", () => deleteNote().catch(showAuthError));

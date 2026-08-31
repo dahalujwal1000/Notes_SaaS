@@ -90,6 +90,12 @@ class NoteUpdate(BaseModel):
     content: str | None = Field(default=None, max_length=10_000)
 
 
+class NoteFavorite(BaseModel):
+    """POST /notes/{id}/favorite body — set the star on/off."""
+
+    favorite: bool
+
+
 class NoteOut(BaseModel):
     """Note representation returned by every notes route."""
 
@@ -98,6 +104,7 @@ class NoteOut(BaseModel):
     id: int
     title: str
     content: str
+    favorite: bool = False
     user_id: int
     created_at: datetime
     updated_at: datetime

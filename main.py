@@ -57,31 +57,43 @@ def _ensure_columns() -> None:
     """Add columns that exist on the model but not yet on a live table.
 
     `create_all` only creates *missing tables*; it never alters existing
-    ones. This tiny migration adds the email-verification columns to a
-    deployed Postgres/SQLite `users` table in place.
+    ones. This tiny migration adds the email-verification columns to the
+    `users` table (and the favorite star to `notes`) in place.
     """
     from sqlalchemy import inspect as sa_inspect, text
 
-    try:
-        columns = {c["name"] for c in sa_inspect(engine).get_columns("users")}
-    except Exception:
-        return  # table not created yet — create_all handles a fresh DB
-
-        dialect = engine.dialect.name
+    dialect = engine.dialect.name
+    inspector = sa_inspect(engine)
     additions = []
-    if "is_verified" not in columns:
+
+    try:
+        user_columns = {c["name"] for c in inspector.get_columns("users")}
+    except Exception:
+        user_columns = set()  # table not created yet — create_all handles a fresh DB
+    if user_columns:
+        if "is_verified" not in user_columns:
+            default = "0" if dialect == "sqlite" else "FALSE"
+            additions.append(
+                f"ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT {default}"
+            )
+        if "verification_token_hash" not in user_columns:
+            additions.append("ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR(64)")
+        if "verification_expires" not in user_columns:
+            additions.append("ALTER TABLE users ADD COLUMN verification_expires TIMESTAMP")
+        if "reset_token_hash" not in user_columns:
+            additions.append("ALTER TABLE users ADD COLUMN reset_token_hash VARCHAR(64)")
+        if "reset_expires" not in user_columns:
+            additions.append("ALTER TABLE users ADD COLUMN reset_expires TIMESTAMP")
+
+    try:
+        note_columns = {c["name"] for c in inspector.get_columns("notes")}
+    except Exception:
+        note_columns = set()
+    if note_columns and "favorite" not in note_columns:
         default = "0" if dialect == "sqlite" else "FALSE"
         additions.append(
-            f"ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT {default}"
+            f"ALTER TABLE notes ADD COLUMN favorite BOOLEAN NOT NULL DEFAULT {default}"
         )
-    if "verification_token_hash" not in columns:
-        additions.append("ALTER TABLE users ADD COLUMN verification_token_hash VARCHAR(64)")
-    if "verification_expires" not in columns:
-        additions.append("ALTER TABLE users ADD COLUMN verification_expires TIMESTAMP")
-    if "reset_token_hash" not in columns:
-        additions.append("ALTER TABLE users ADD COLUMN reset_token_hash VARCHAR(64)")
-    if "reset_expires" not in columns:
-        additions.append("ALTER TABLE users ADD COLUMN reset_expires TIMESTAMP")
 
     if additions:
         with engine.begin() as conn:

@@ -47,8 +47,9 @@ const els = {
   editorEmpty: $("editor-empty"), editorPane: $("editor-pane"),
   noteTitle: $("note-title"), noteContent: $("note-content"),
   notePreview: $("note-preview"), todoProgress: $("todo-progress"),
-  saveStatus: $("save-status"), modeToggle: $("mode-toggle"),
-  deleteBtn: $("delete-btn"),
+    saveStatus: $("save-status"), modeToggle: $("mode-toggle"),
+  deleteBtn: $("delete-btn"), favoriteBtn: $("favorite-btn"),
+  notesStats: $("notes-stats"), noteMeta: $("note-meta"), noteStats: $("note-stats"),
   floatStack: $("float-stack"),
   eventList: $("event-list"), addEventBtn: $("add-event-btn"),
   eventModal: $("event-modal"), eventForm: $("event-form"),
@@ -302,18 +303,43 @@ async function refreshNotes({ selectFirst = true } = {}) {
 function renderList() {
   els.noteList.textContent = "";
   if (!state.notes.length) {
-    const empty = document.createElement("p");
+    const empty = document.createElement("div");
     empty.className = "list-empty";
-    empty.textContent = els.searchInput.value.trim()
+    const illus = document.createElement("div");
+    illus.className = "empty-illustration";
+    illus.textContent = "📝";
+    const msg = document.createElement("p");
+    msg.textContent = els.searchInput.value.trim()
       ? "No notes match your search."
       : "No notes yet — create one!";
+    empty.append(illus, msg);
     els.noteList.appendChild(empty);
     return;
   }
-  for (const note of state.notes) {
+
+  // Update notes stats
+  els.notesStats.textContent = `${state.notes.length} note${state.notes.length !== 1 ? "s" : ""}`;
+
+  // Favorites float to the top (stable — keeps recency order inside each group)
+  const ordered = [...state.notes].sort(
+    (a, b) => (b.favorite === true) - (a.favorite === true)
+  );
+
+  for (const note of ordered) {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "note-item" + (note.id === state.selectedId ? " selected" : "");
+
+    // Category dot based on content patterns
+    const category = detectCategory(note.title || "", note.content || "");
+    const dot = document.createElement("span");
+    dot.className = `note-category-dot category-${category}`;
+    dot.style.background = categoryColors[category];
+    dot.title = category === "default" ? "Note" : category[0].toUpperCase() + category.slice(1);
+
+    // Note content wrapper
+    const contentWrap = document.createElement("div");
+    contentWrap.className = "note-item-content";
 
     const title = document.createElement("span");
     title.className = "note-item-title";
@@ -323,7 +349,25 @@ function renderList() {
     meta.className = "note-item-meta";
     meta.textContent = firstLine(note.content) || formatDate(note.updated_at);
 
-    item.append(title, meta);
+    // Word count subtitle
+    const wordCount = countWords(note.content);
+    const wordCountSpan = document.createElement("span");
+    wordCountSpan.className = "note-item-word-count";
+    wordCountSpan.textContent = wordCount === 1 ? "1 word" : `${wordCount} words`;
+
+    contentWrap.append(title, meta, wordCountSpan);
+
+    // Favorite star (visible always for favorites; on hover otherwise)
+    const favorite = document.createElement("span");
+    favorite.className = "note-favorite" + (note.favorite ? " active" : "");
+    favorite.textContent = note.favorite ? "⭐" : "☆";
+    favorite.title = note.favorite ? "Remove from favorites" : "Add to favorites";
+    favorite.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleFavorite(note.id);
+    });
+
+    item.append(dot, contentWrap, favorite);
     item.addEventListener("click", () => selectNote(note.id));
     els.noteList.appendChild(item);
   }
@@ -336,6 +380,79 @@ function firstLine(text) {
 
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/* Category detection based on content keywords */
+const categoryColors = {
+  work: "#2f80ed",
+  personal: "#8b5cf6",
+  ideas: "#22c55e",
+  learning: "#f59e0b",
+  default: "#6b7280",
+};
+
+const categoryKeywords = {
+  work: ["meeting", "project", "task", "deadline", "report", "email", "client", "review", "sprint", "roadmap"],
+  personal: ["family", "friends", "birthday", "vacation", "holiday", "personal", "home"],
+  ideas: ["idea", "brainstorm", "concept", "innovation", "creative", "think", "wonder"],
+  learning: ["learn", "tutorial", "course", "study", "research", "how to", "guide", "documentation"],
+};
+
+function detectCategory(title, content) {
+  const text = (title + " " + content).toLowerCase();
+  for (const [category, keywords] of Object.entries(categoryKeywords)) {
+    if (keywords.some(keyword => text.includes(keyword))) {
+      return category;
+    }
+  }
+  return "default";
+}
+
+/* Word count helper */
+function countWords(text) {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
+/* Toggle favorite status for a note */
+async function toggleFavorite(id) {
+  try {
+    const note = state.notes.find((n) => n.id === id);
+    if (!note) return;
+    const updated = await api(`/notes/${id}/favorite`, {
+      method: "PUT",
+      body: { favorite: !note.favorite },
+    });
+    const index = state.notes.findIndex((n) => n.id === id);
+    if (index !== -1) state.notes[index] = updated;
+    renderList();
+    // If this is the selected note, refresh the toolbar star + meta row
+    if (state.selectedId === id && !els.editorPane.hidden) {
+      syncFavoriteButton(updated);
+      updateNoteMeta(updated);
+    }
+  } catch (err) {
+    console.error("Failed to toggle favorite:", err);
+  }
+}
+
+/* Keep the editor toolbar's favorite button in sync with the note state */
+function syncFavoriteButton(note) {
+  if (!els.favoriteBtn) return;
+  els.favoriteBtn.textContent = note.favorite ? "★ Favorited" : "☆ Favorite";
+  els.favoriteBtn.classList.toggle("fav-active", !!note.favorite);
+  els.favoriteBtn.title = note.favorite
+    ? "Remove from favorites"
+    : "Add to favorites";
+}
+
+/* Update note meta row in the editor */
+function updateNoteMeta(note) {
+  if (!els.noteMeta || !els.noteStats) return;
+  const wordCount = countWords(note.content);
+  els.noteStats.textContent = `${wordCount} ${wordCount === 1 ? 'word' : 'words'} · Updated ${formatDate(note.updated_at)}`;
+  els.noteMeta.hidden = false;
 }
 
 function selectNote(id) {
@@ -358,7 +475,11 @@ function selectNote(id) {
   els.noteTitle.value = note.title;
   els.noteContent.value = note.content;
   els.saveStatus.textContent = "";
+  els.saveStatus.classList.remove("saved");
   updateTodoProgress();
+  // Show note metadata (word count, last updated) + favorite state
+  syncFavoriteButton(note);
+  updateNoteMeta(note);
 }
 
 let saveTimer = null;
@@ -384,17 +505,31 @@ async function saveNote() {
     const index = state.notes.findIndex((n) => n.id === id);
     if (index !== -1) state.notes[index] = updated;
     renderList();
-    els.saveStatus.textContent = "Saved";
-    updateTodoProgress();
+    els.saveStatus.textContent = "✓ Saved";
+    els.saveStatus.classList.add("saved");
+    // Update note meta with new stats
+    updateNoteMeta(updated);
+    setTimeout(() => {
+      els.saveStatus.textContent = "";
+      els.saveStatus.classList.remove("saved");
+      updateTodoProgress();
+    }, 3000);
   } catch (err) {
-    els.saveStatus.textContent = "Error: " + err.message;
+    els.saveStatus.textContent = "✗ Failed to save";
+    els.saveStatus.classList.add("saved");
+    setTimeout(() => {
+      els.saveStatus.textContent = "";
+      els.saveStatus.classList.remove("saved");
+    }, 3000);
+    showAuthError(err.message || "Couldn't save note.");
+    console.error(err);
   }
 }
 
 async function createNote() {
   const note = await api("/notes", {
     method: "POST",
-    body: { title: "Untitled", content: "" },
+    body: { title: "Untitled note", content: "" },
   });
   els.searchInput.value = "";
   state.notes.unshift(note);
@@ -1039,6 +1174,9 @@ window.addEventListener("resize", () => {
 
 els.newNoteBtn.addEventListener("click", () => createNote().catch(showAuthError));
 els.deleteBtn.addEventListener("click", () => deleteNote().catch(showAuthError));
+els.favoriteBtn.addEventListener("click", () => {
+  if (state.selectedId !== null) toggleFavorite(state.selectedId);
+});
 els.modeToggle.addEventListener("click", () =>
   setMode(state.mode === "edit" ? "preview" : "edit")
 );

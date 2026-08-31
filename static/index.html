@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Workspace — Tasks & Notes</title>
-<link rel="stylesheet" href="style.css?v=20260830d">
+<link rel="stylesheet" href="style.css?v=20260831b">
 </head>
 <body>
 
@@ -155,22 +155,39 @@
     <section id="view-notes" class="view" hidden>
       <div class="notes-wrap">
         <div class="notes-side">
-          <button id="new-note-btn" class="btn btn-primary btn-block" type="button">+ New note</button>
-          <input type="search" id="search-input" class="search" placeholder="Search notes…" autocomplete="off">
+          <div class="notes-side-header">
+            <span class="notes-side-title">My Notes</span>
+            <span id="notes-stats" class="notes-stats">0 notes</span>
+          </div>
+          <button id="new-note-btn" class="btn btn-primary btn-block" type="button">
+            <span>+</span> New note
+          </button>
+          <div class="search-container">
+            <span class="search-icon">🔍</span>
+            <input type="search" id="search-input" class="search" placeholder="Search notes…" autocomplete="off">
+          </div>
           <nav id="note-list" class="note-list" aria-label="Notes"></nav>
         </div>
         <div class="notes-editor">
-          <div id="editor-empty" class="editor-empty"><p>Select a note, or create one.</p></div>
+          <div id="editor-empty" class="editor-empty">
+            <div class="editor-illustration">📝</div>
+            <h3>Select a note, or create one</h3>
+            <p>Choose a note from the list or start writing a new one. Your edits save automatically.</p>
+          </div>
           <div id="editor-pane" class="editor-pane" hidden>
             <header class="editor-toolbar">
               <span id="save-status" class="save-status"></span>
               <span class="toolbar-spacer"></span>
+              <button id="favorite-btn" class="btn btn-ghost" type="button" title="Add to favorites">☆ Favorite</button>
               <button id="mode-toggle" class="btn btn-ghost" type="button">Preview</button>
               <button id="delete-btn" class="btn btn-ghost danger" type="button">Delete</button>
             </header>
-            <input id="note-title" class="note-title" placeholder="Untitled" maxlength="255" autocomplete="off">
+            <input id="note-title" class="note-title" placeholder="Untitled note..." maxlength="255" autocomplete="off">
+            <div id="note-meta" class="note-meta-row" hidden>
+              <span id="note-stats"></span>
+            </div>
             <div id="todo-progress" class="todo-progress" hidden></div>
-            <textarea id="note-content" class="note-content" spellcheck="true" placeholder="Write something… Type '- [ ] your task' to start a to-do list."></textarea>
+            <textarea id="note-content" class="note-content" spellcheck="true" placeholder="Write your note here..."></textarea>
             <div id="note-preview" class="note-preview" hidden></div>
           </div>
         </div>
@@ -211,7 +228,7 @@
   <div id="float-stack" class="float-stack" aria-live="polite"></div>
 </div>
 
-<script src="app.js?v=20260831a"></script>
+<script src="app.js?v=20260831b"></script>
 </body>
 </html>
 

@@ -100,6 +100,21 @@ def update_note(
     return note
 
 
+@router.put("/{note_id}/favorite", response_model=schemas.NoteOut, summary="Star / unstar one of my notes")
+def set_note_favorite(
+    note_id: int,
+    body: schemas.NoteFavorite,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> models.Note:
+    """Set the favorite flag on a note (true = starred, false = unstarred)."""
+    note = _get_owned_note_or_404(db, current_user, note_id)
+    note.favorite = body.favorite
+    db.commit()
+    db.refresh(note)
+    return note
+
+
 @router.delete(
     "/{note_id}",
     status_code=status.HTTP_204_NO_CONTENT,

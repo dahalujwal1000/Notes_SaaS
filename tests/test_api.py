@@ -204,3 +204,71 @@ def test_search_and_pagination(client):
         "beta plan",
         "alpha plan",
     ]
+
+
+# ----------------------------- favorites --------------------------------- #
+
+def test_favorite_requires_auth(client):
+    assert client.put("/notes/1/favorite", json={"favorite": True}).status_code == 401
+
+
+def test_favorite_star_and_unstar(client):
+    headers = auth_headers(client)
+    note = client.post(
+        "/notes", json={"title": "Star me", "content": "shine"}, headers=headers
+    ).json()
+
+    # New notes start unstarred.
+    assert note["favorite"] is False
+
+    starred = client.put(
+        f"/notes/{note['id']}/favorite", json={"favorite": True}, headers=headers
+    )
+    assert starred.status_code == 200, starred.text
+    assert starred.json()["favorite"] is True
+
+    # Regular title update must not wipe the favorite flag.
+    client.put(
+        f"/notes/{note['id']}", json={"title": "Still starred"}, headers=headers
+    )
+    assert client.get(f"/notes/{note['id']}", headers=headers).json()["favorite"] is True
+
+    unstarred = client.put(
+        f"/notes/{note['id']}/favorite", json={"favorite": False}, headers=headers
+    )
+    assert unstarred.status_code == 200
+    assert unstarred.json()["favorite"] is False
+
+
+def test_favorite_rejects_missing_body(client):
+    headers = auth_headers(client)
+    note = client.post("/notes", json={"title": "x"}, headers=headers).json()
+    assert client.put(f"/notes/{note['id']}/favorite", headers=headers).status_code == 422
+    # Lists/objects can't be coerced to bool (unlike "yes"/"1", which lax mode accepts).
+    assert client.put(
+        f"/notes/{note['id']}/favorite", json={"favorite": ["yes"]}, headers=headers
+    ).status_code == 422
+
+
+def test_favorite_cannot_touch_other_users_notes(client):
+    owner_headers = auth_headers(client)
+    intruder_headers = auth_headers(client)
+    note = client.post("/notes", json={"title": "Secret"}, headers=owner_headers).json()
+    assert (
+        client.put(
+            f"/notes/{note['id']}/favorite",
+            json={"favorite": True},
+            headers=intruder_headers,
+        ).status_code
+        == 404
+    )
+
+
+def test_favorite_persists_in_list(client):
+    headers = auth_headers(client)
+    a = client.post("/notes", json={"title": "A"}, headers=headers).json()
+    b = client.post("/notes", json={"title": "B"}, headers=headers).json()
+    client.put(f"/notes/{b['id']}/favorite", json={"favorite": True}, headers=headers)
+    notes = {n["title"]: n for n in client.get("/notes", headers=headers).json()}
+    assert notes["A"]["favorite"] is False
+    assert notes["B"]["favorite"] is True

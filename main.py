@@ -97,7 +97,7 @@ def _ensure_columns() -> None:
 app = FastAPI(
     title="Notes SaaS API",
     description="SaaS-style Notes CRUD API with JWT authentication.",
-    version="2.0.0",
+    version="3.0.0",
     lifespan=lifespan,
 )
 

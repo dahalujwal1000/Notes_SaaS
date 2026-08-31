@@ -9,6 +9,7 @@
 const API = window.location.origin;
 const TOKEN_KEY = "notes_token";
 const EMAIL_KEY = "notes_email";
+const THEME_KEY = "notes_theme";
 
 const COLUMNS = [
   { key: "todo",   label: "To-do",       color: "#8B5CF6" },
@@ -57,6 +58,7 @@ const els = {
   eventDate: $("event-date"), eventError: $("event-error"),
   eventCancel: $("event-cancel"), eventModalClose: $("event-modal-close"),
   verifyBanner: $("verify-banner"), resendVerifyBtn: $("resend-verify-btn"),
+  themeToggle: $("theme-toggle"), themeToggleAuth: $("theme-toggle-auth"),
 };
 
 const state = {
@@ -104,6 +106,54 @@ async function api(path, { method = "GET", body, form } = {}) {
   }
   return resp.status === 204 ? null : resp.json();
 }
+
+/* ---------------- theme (dark mode) ----------------
+   Preference precedence: explicit choice in localStorage ("light"/"dark")
+   → OS prefers-color-scheme. The <head> inline script already set
+   data-theme pre-paint; this module keeps the toggle icons in sync,
+   handles clicks, and follows OS changes while no choice is stored. */
+
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+function effectiveTheme() {
+  let stored = null;
+  try { stored = localStorage.getItem(THEME_KEY); } catch (_) { /* private mode */ }
+  if (stored === "light" || stored === "dark") return stored;
+  return systemDark.matches ? "dark" : "light";
+}
+
+function applyTheme() {
+  const theme = effectiveTheme();
+  document.documentElement.dataset.theme = theme;
+  const icon = theme === "dark" ? "☀️" : "🌙";
+  const title = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+  for (const btn of [els.themeToggle, els.themeToggleAuth]) {
+    if (!btn) continue;
+    btn.textContent = icon;
+    btn.title = title;
+  }
+}
+
+function toggleTheme() {
+  try { localStorage.setItem(THEME_KEY, effectiveTheme() === "dark" ? "light" : "dark"); } catch (_) {}
+  // Cross-fade the palette instead of snapping (class removed after the animation).
+  const root = document.documentElement;
+  root.classList.add("theme-anim");
+  clearTimeout(toggleTheme._timer);
+  toggleTheme._timer = setTimeout(() => root.classList.remove("theme-anim"), 240);
+  applyTheme();
+}
+
+// Follow OS switches live until the user makes an explicit choice.
+systemDark.addEventListener("change", () => {
+  let stored = null;
+  try { stored = localStorage.getItem(THEME_KEY); } catch (_) { /* private mode */ }
+  if (stored !== "light" && stored !== "dark") applyTheme();
+});
+
+els.themeToggle.addEventListener("click", toggleTheme);
+els.themeToggleAuth.addEventListener("click", toggleTheme);
+applyTheme();
 
 /* ---------------- auth flow ---------------- */
 

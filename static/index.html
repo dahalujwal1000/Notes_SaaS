@@ -4,12 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Workspace — Tasks & Notes</title>
-<link rel="stylesheet" href="style.css?v=20260831b">
+<script>
+  // Apply the saved (or OS-preferred) theme before first paint to avoid a flash.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("notes_theme"); } catch (e) { /* private mode */ }
+    if (t !== "light" && t !== "dark") {
+      t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark" : "light";
+    }
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<link rel="stylesheet" href="style.css?v=20260831c">
 </head>
 <body>
 
 <!-- ================= Auth view ================= -->
 <section id="auth-view" class="auth-view" hidden>
+  <button id="theme-toggle-auth" class="btn-icon theme-toggle-auth" type="button" title="Switch to dark mode">🌙</button>
   <div class="auth-card">
     <div class="auth-logo">🟣</div>
     <h1 id="auth-title">Welcome back</h1>
@@ -122,6 +135,7 @@
       <button id="mobile-menu" class="btn-icon" type="button" aria-label="Toggle sidebar">☰</button>
       <nav class="breadcrumb"><span>Workspace</span><span class="crumb-sep">/</span><b id="crumb-page">Home · Product</b></nav>
       <div class="top-actions">
+        <button id="theme-toggle" class="btn-icon" type="button" title="Switch to dark mode">🌙</button>
         <button id="search-toggle" class="btn-icon" type="button" title="Search tasks">🔍</button>
         <input id="board-search" class="board-search" placeholder="Filter tasks…" hidden>
         <button id="sort-btn" class="btn-icon" type="button" title="Sort: manual order">⇅</button>
@@ -228,7 +242,7 @@
   <div id="float-stack" class="float-stack" aria-live="polite"></div>
 </div>
 
-<script src="app.js?v=20260831b"></script>
+<script src="app.js?v=20260831c"></script>
 </body>
 </html>
 

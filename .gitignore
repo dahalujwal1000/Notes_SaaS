@@ -15,3 +15,9 @@ notes.db
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Session temp files (server logs, pid file, scratch scripts)
+_server_*.log
+_server_pid.txt
+_*.py
+_commit_msg.txt

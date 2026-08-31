@@ -1,10 +1,3 @@
-"""App entrypoint: wires routers, creates tables on startup.
-
-Run locally with zero manual DB setup:
-    uvicorn main:app --reload
-Swagger UI: http://127.0.0.1:8000/docs
-"""
-
 """App entrypoint: wires routers, creates tables on startup, serves the UI.
 
 Run locally with zero manual DB setup:

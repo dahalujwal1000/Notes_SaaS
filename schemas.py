@@ -5,12 +5,32 @@ build responses directly from SQLAlchemy ORM objects.
 """
 
 from datetime import date, datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 # Plain regex instead of pydantic EmailStr: keeps the project free of the
 # extra `email-validator` dependency while still catching obvious typos.
 _EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+
+def _bcrypt_safe(password: str) -> str:
+    """Reject passwords over 72 bytes.
+
+    bcrypt only hashes the first 72 bytes, and bcrypt 5.x raises ValueError
+    instead of silently truncating — without this check an over-long
+    password would crash signup/login/reset with a 500 instead of a 422.
+    Byte length (not characters) is what matters: one emoji is 4 bytes.
+    """
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 bytes long")
+    return password
+
+
+# Shared password type: 8–128 chars AND at most 72 bytes once UTF-8 encoded.
+Password = Annotated[
+    str, Field(min_length=8, max_length=128, examples=["supersecret123"]), AfterValidator(_bcrypt_safe)
+]
 
 
 # ----------------------------- Auth / Users ----------------------------- #
@@ -19,15 +39,7 @@ class UserCreate(BaseModel):
     """POST /auth/signup body."""
 
     email: str = Field(max_length=255, pattern=_EMAIL_PATTERN, examples=["user@example.com"])
-    password: str = Field(min_length=8, max_length=128, examples=["supersecret123"])
-
-
-class UserLogin(BaseModel):
-    """JSON shape of login credentials (the endpoint itself uses the OAuth2
-    form so Swagger's Authorize button works out of the box)."""
-
-    email: str = Field(max_length=255)
-    password: str = Field(min_length=1, max_length=128)
+    password: Password
 
 
 class UserOut(BaseModel):
@@ -64,7 +76,7 @@ class ResetPassword(BaseModel):
     """POST /auth/reset-password body — token from the emailed reset link."""
 
     token: str = Field(min_length=10, max_length=128)
-    password: str = Field(min_length=8, max_length=128, examples=["supersecret123"])
+    password: Password
 
 
 class Token(BaseModel):

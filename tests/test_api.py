@@ -50,6 +50,13 @@ def test_signup_rejects_short_password(client):
     assert signup(client, password="short").status_code == 422
 
 
+def test_signup_rejects_overlong_password(client):
+    # bcrypt hashes at most 72 bytes, and bcrypt 5.x raises instead of
+    # truncating — an >72-byte password must be rejected with 422 before
+    # hashing, not crash signup with a 500.
+    assert signup(client, password="x" * 80).status_code == 422
+
+
 def test_signup_rejects_invalid_email(client):
     assert signup(client, email="not-an-email").status_code == 422
 

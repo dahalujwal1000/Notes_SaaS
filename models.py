@@ -1,7 +1,8 @@
-"""SQLAlchemy ORM models: User and Note.
+"""SQLAlchemy ORM models: User, Note, Task, and Event.
 
-One User has many Notes. Notes are always queried through the owning
-user's id — the API layer must never trust a client-supplied user id.
+One User has many Notes, Tasks, and Events. Every child row is always
+queried through the owning user's id — the API layer must never trust a
+client-supplied user id.
 """
 
 from datetime import date

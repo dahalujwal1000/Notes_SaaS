@@ -2,7 +2,7 @@
 
 A production-style **Notes CRUD backend** with JWT authentication — built as a portfolio project to demonstrate real backend skills: auth, relational DB design, REST design, and security fundamentals.
 
-> 🔗 **Live app:** [https://notes-saas-myez.onrender.com](https://notes-saas-myez.onrender.com) — the full Notion-style UI, deployed on Render (free tier; the first request after ~15 min of inactivity may take ~50 s while the service wakes up). API reference: [`/docs`](https://notes-saas-myez.onrender.com/docs).
+> 🔗 **Live app:** [https://notes-saas-001-final.onrender.com](https://notes-saas-001-final.onrender.com) — the full Notion-style UI, deployed on Render (free tier; the first request after ~15 min of inactivity may take ~50 s while the service wakes up). API reference: [`/docs`](https://notes-saas-001-final.onrender.com/docs).
 
 ## Features
 

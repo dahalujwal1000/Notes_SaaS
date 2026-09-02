@@ -138,7 +138,9 @@ in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
 1. **New + → PostgreSQL** — create the database, then copy its **Internal Database URL**.
 2. **New + → Web Service** — connect this repo:
    - Build command: `pip install -r requirements.txt`
-   - Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`
+     (the proxy flags honor Render's `X-Forwarded-Proto`, so emailed
+     verification/reset links come out as `https://…` instead of `http://…`)
 3. **Environment → Add from .env** — paste:
 
    ```ini
@@ -160,6 +162,11 @@ in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
 
    Plain `postgresql://` URLs are upgraded to SQLAlchemy's psycopg 3 dialect
    automatically — no manual scheme editing required.
+
+   Optional SMTP overrides: `MAIL_HOST` (default `smtp.gmail.com` — the
+   commonly suggested `MAIL_SERVER` name is accepted as an alias but logs
+   a startup warning), `MAIL_PORT` (default `587` = STARTTLS, `465` =
+   implicit SSL) and `MAIL_FROM` (default = `MAIL_USER`).
 
 ### Sign in with Google — free setup (5 minutes)
 

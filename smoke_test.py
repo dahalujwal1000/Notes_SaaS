@@ -72,13 +72,17 @@ def login_token(username: str, password: str) -> str:
             payload = json.loads(resp.read().decode())
         print(f"PASS  POST /auth/login -> {resp.status} (expected 200)")
         return payload["access_token"]
-    except urllib.error.HTTPError as err:
-        raw = err.read().decode()
+    except urllib.error.HTTPError as exc:
+        # NOTE: hoist what we need — Python deletes the `as exc` variable
+        # when the except block ends, so using `exc` later would raise
+        # UnboundLocalError on the verification-gate path.
+        raw = exc.read().decode()
+        status = exc.code
         payload = json.loads(raw) if raw else {}
 
     detail = (payload.get("detail") or "").lower()
     if "verified" in detail or "verification" in detail:
-        print(f"PASS  POST /auth/login -> {err.code} (email verification enforced ✓)")
+        print(f"PASS  POST /auth/login -> {status} (email verification enforced ✓)")
         print(f"PASS  unverified login blocked ✓")
         print()
         print("[gate] This server enforces email verification, so fresh signups cannot log in yet —")
@@ -90,7 +94,7 @@ def login_token(username: str, password: str) -> str:
         print("[gate] emailed link instead.")
         sys.exit(2)
 
-    print(f"FAIL  POST /auth/login -> {err.code} (expected 200)")
+    print(f"FAIL  POST /auth/login -> {status} (expected 200)")
     failures.append(f"POST /auth/login -> {err.code} payload={payload}")
     return ""
 

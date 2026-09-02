@@ -21,7 +21,10 @@ load_dotenv()
 backend = os.environ.get("MAIL_BACKEND") or "console"
 user = os.environ.get("MAIL_USER") or ""
 password = (os.environ.get("MAIL_APP_PASSWORD") or "").replace(" ", "")
-host = os.environ.get("MAIL_HOST", "smtp.gmail.com")
+# Same resolution as the app (mailer._smtp_host): MAIL_HOST is the documented
+# name, MAIL_SERVER accepted as an alias so this diagnostic matches real
+# behavior on the hosting dashboard.
+host = os.environ.get("MAIL_HOST") or os.environ.get("MAIL_SERVER") or "smtp.gmail.com"
 port = int(os.environ.get("MAIL_PORT", "587"))
 from_addr = os.environ.get("MAIL_FROM") or user or "(not set)"
 
@@ -31,6 +34,9 @@ print(f"MAIL_USER           = {user or '(not set)'}")
 print(f"MAIL_APP_PASSWORD   = {'set (' + str(len(password)) + ' chars)' if password else '(NOT SET)'}")
 print(f"MAIL_HOST / PORT    = {host}:{port}")
 print(f"MAIL_FROM           = {from_addr}")
+if not os.environ.get("MAIL_HOST") and os.environ.get("MAIL_SERVER"):
+    print("(note: SMTP host came from MAIL_SERVER — the app documents MAIL_HOST;")
+    print("  both work, but rename it to MAIL_HOST in the dashboard to match the docs)")
 print()
 
 if backend != "smtp":

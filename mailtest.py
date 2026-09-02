@@ -57,7 +57,9 @@ try:
     else:
         server = smtplib.SMTP(host, port, timeout=20)
         server.ehlo()
-        if port == 587:
+        # Upgrade to TLS whenever the relay offers STARTTLS (587 and 2525
+        # both do) so the login is never sent in plaintext.
+        if server.has_extn("starttls"):
             server.starttls(context=context)
             server.ehlo()
     print("Connected ✓")

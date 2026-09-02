@@ -117,8 +117,13 @@ def _smtp_send(to_email: str, subject: str, html: str) -> None:
         return
 
     with smtplib.SMTP(host, port, timeout=15) as server:
-        if port == 587:
+        server.ehlo()
+        # Opportunistic TLS: upgrade whenever the relay offers STARTTLS
+        # (587 and 2525 both do) so credentials never cross the network in
+        # plaintext — regardless of which non-SSL port the dashboard is set to.
+        if server.has_extn("starttls"):
             server.starttls(context=context)
+            server.ehlo()
         if user:
             server.login(user, password)
         server.send_message(msg)

@@ -65,10 +65,11 @@ Open http://127.0.0.1:8000/docs → click **Authorize** → log in with `email` 
 
 | Method | Path              | Auth | Description                        |
 |--------|-------------------|------|------------------------------------|
-| POST   | `/auth/signup`    | —    | Create user (201; 400 if email taken) |
-| POST   | `/auth/login`     | —    | Form login → `{access_token}`      |
-| GET    | `/auth/google/login` | —  | Redirect to Google's consent screen (free OAuth) |
-| GET    | `/auth/google/callback` | — | Google's reply → creates/finds user (auto-verified) + JWT → redirects to app |
+| POST   | `/auth/signup`    | —    | Create user — 201 + generic message (non-enumerating; same for a new, existing unverified, or verified address, throttled resend) |
+| POST   | `/auth/login`     | —    | Form login → `{access_token}` (5 failed attempts / 15 min → 429 lockout) |
+| GET    | `/auth/google/login` | —  | Redirect to Google's consent screen (free OAuth; mints a CSRF `state` cookie) |
+| GET    | `/auth/google/callback` | — | Google's reply → validates `state` → creates/finds user (auto-verified) → redirects with a single-use `google_code` (a JWT is never placed in the URL) |
+| POST   | `/auth/google/exchange` | — | Redeem the one-time `google_code` for a real `{access_token}` (single-use, 2-min expiry) |
 | POST   | `/auth/verify`    | —    | Verify email with emailed token     |
 | POST   | `/auth/resend-verification` | JWT | Re-send verification link (in-app) |
 | POST   | `/auth/resend-verification-email` | — | Re-send verification link (login screen, by email, throttled, non-enumerating) |
@@ -193,6 +194,12 @@ in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
 > 💡 Free: Google OAuth sign-in has no billing/usage cost, and works on
 > Render's free tier. Google already verified the email, so these accounts
 > are `is_verified=true` immediately — no verification email, ever.
+>
+> 🔒 Security: the login flow mints a random `state` nonce (stored in an
+> HttpOnly cookie) and the callback refuses a state mismatch — blocking
+> login CSRF. The callback never puts a JWT in the URL; it returns a
+> single-use, 2-minute `google_code` that the SPA redeems for the token over
+> a normal JSON POST (`POST /auth/google/exchange`).
 4. Deploy. Swagger UI lives at `https://<your-app>.onrender.com/docs`.
 
 ### AI assistant on Render — required env vars

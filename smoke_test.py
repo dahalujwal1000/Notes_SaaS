@@ -7,7 +7,7 @@ Usage:
         set EMAIL_VERIFICATION_REQUIRED=false before starting uvicorn.)
     2. Run:               python smoke_test.py http://127.0.0.1:8765
 
-Covers: signup, duplicate-email 400, login (form), bad login 401,
+Covers: signup, duplicate-email 201 (non-enumerating), login (form), bad login 401,
 missing-token 401, invalid-token 401, note CRUD, ownership isolation
 (other user gets 404), search, pagination, and delete-then-404.
 Uses only the stdlib (no httpx/requests dependency).
@@ -95,7 +95,7 @@ def login_token(username: str, password: str) -> str:
         sys.exit(2)
 
     print(f"FAIL  POST /auth/login -> {status} (expected 200)")
-    failures.append(f"POST /auth/login -> {err.code} payload={payload}")
+    failures.append(f"POST /auth/login -> {status} payload={payload}")
     return ""
 
 
@@ -106,7 +106,7 @@ pw = "secret123"
 
 # --- Auth ---------------------------------------------------------------- #
 call("POST", "/auth/signup", {"email": u1, "password": pw}, expected=201)
-call("POST", "/auth/signup", {"email": u1, "password": pw}, expected=400)  # duplicate
+call("POST", "/auth/signup", {"email": u1, "password": pw}, expected=201)  # non-enumerating: same response for duplicates
 token1 = login_token(u1, pw)
 call("POST", "/auth/login", {"username": u1, "password": "wrong-pass"}, form=True, expected=401)
 

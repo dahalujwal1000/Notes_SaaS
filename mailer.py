@@ -206,8 +206,11 @@ def send_email(to_email: str, subject: str, html: str) -> None:
             logger.exception("SMTP send FAILED — falling back to console capture")
     elif MAIL_BACKEND == "resend":
         try:
-            import requests
-            resp = requests.post(
+            # httpx is already a project dependency (used by the AI provider
+            # adapters); `requests` was never declared in requirements.txt.
+            import httpx
+
+            resp = httpx.post(
                 "https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {os.environ.get('RESEND_API_KEY')}"},
                 json={

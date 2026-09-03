@@ -1288,22 +1288,28 @@ document.addEventListener("click", (event) => {
 });
 
 (async function init() {
-  // Sign in with Google: the OAuth callback redirects here with ?google_token=…
   const params = new URLSearchParams(window.location.search);
-  const googleToken = params.get("google_token");
+  const googleCode = params.get("google_code");
   const googleEmail = params.get("email");
   const googleError = params.get("error");
-  if (googleToken) {
-    state.token = googleToken;
-    state.email = googleEmail || "";
-    localStorage.setItem(TOKEN_KEY, state.token);
-    localStorage.setItem(EMAIL_KEY, state.email);
-    // Clean the token out of the address bar so it isn't shared with anyone.
+
+  // Sign in with Google: the callback redirects here with a single-use
+  // ?google_code=… (never a JWT). Redeem it over a POST for the real token.
+  if (googleCode) {
+    // Drop the code from the address bar regardless of the outcome.
     window.history.replaceState({}, "", window.location.pathname);
     try {
+      const data = await api("/auth/google/exchange", {
+        method: "POST",
+        body: { code: googleCode },
+      });
+      state.token = data.access_token;
+      state.email = googleEmail || "";
+      localStorage.setItem(TOKEN_KEY, state.token);
+      localStorage.setItem(EMAIL_KEY, state.email);
       await enterApp();
       return;
-    } catch (_) { /* bad token — fall through to the login screen */ }
+    } catch (_) { /* bad/expired code — fall through to the login screen */ }
   }
 
   if (state.token) {

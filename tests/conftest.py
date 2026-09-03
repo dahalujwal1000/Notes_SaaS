@@ -62,6 +62,24 @@ def client(db_session):
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _reset_in_memory_guards():
+    """Clear per-process guard rails between tests so they can't leak state:
+    login-failure counters, verification/reset email throttles, the AI
+    rate-limit windows, and the one-time Google sign-in exchange codes."""
+    import auth as auth_module
+    from routers import ai as ai_router
+    from routers import users as users_router
+
+    users_router._LOGIN_FAIL_BY_EMAIL.clear()
+    users_router._LOGIN_FAIL_BY_IP.clear()
+    users_router._LAST_RESEND.clear()
+    users_router._LAST_RESET.clear()
+    ai_router._chat_windows.clear()
+    auth_module._google_exchange_codes.clear()
+    yield
+
+
 # ------------------------- shared API helpers --------------------------- #
 
 def unique_email() -> str:

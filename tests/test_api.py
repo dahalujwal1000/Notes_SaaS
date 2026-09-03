@@ -26,24 +26,43 @@ def test_health_and_homepage(client):
     assert "text/html" in home.headers["content-type"]
 
 
-def test_signup_returns_201_with_public_fields_only(client):
+def test_signup_returns_201_with_generic_message(client):
     email = unique_email()
     resp = signup(client, email=email)
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["id"] == 1  # fresh schema per test -> first user is id 1
-    assert body["email"] == email
-    assert "created_at" in body
-    assert "password" not in body
-    assert "hashed_password" not in body  # hash never leaves the server
+    # Non-enumerating: the response never leaks account details (id, email,
+    # created_at) back to the caller — just a generic message.
+    assert isinstance(body, dict) and body.get("message")
+    assert "id" not in body and "email" not in body and "created_at" not in body
 
 
-def test_signup_rejects_duplicate_email(client):
+def test_signup_non_enumerating_for_existing_email(client):
+    """A second signup with the same address gets the same 201 + message, so
+    a caller can't tell whether an email already has an account."""
+    email = unique_email()
+    first = signup(client, email=email)
+    second = signup(client, email=email)
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json() == second.json()
+
+
+def test_login_locks_out_after_repeated_failures(client):
+    from routers.users import LOGIN_MAX_ATTEMPTS
+
     email = unique_email()
     assert signup(client, email=email).status_code == 201
-    resp = signup(client, email=email)
-    assert resp.status_code == 400
-    assert resp.json()["detail"] == "Email already registered"
+    for _ in range(LOGIN_MAX_ATTEMPTS):
+        resp = client.post(
+            "/auth/login", data={"username": email, "password": "wrong-pass-1"}
+        )
+        assert resp.status_code == 401
+    # The 6th attempt inside the window is rate-limited, not credential-checked.
+    resp = client.post(
+        "/auth/login", data={"username": email, "password": "wrong-pass-1"}
+    )
+    assert resp.status_code == 429
 
 
 def test_signup_rejects_short_password(client):

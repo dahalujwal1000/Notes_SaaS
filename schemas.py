@@ -86,6 +86,13 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class GoogleExchange(BaseModel):
+    """POST /auth/google/exchange body — the one-time code from the OAuth
+    callback redirect (?google_code=…), redeemed for a real JWT."""
+
+    code: str = Field(min_length=1, max_length=256)
+
+
 # -------------------------------- Notes --------------------------------- #
 
 class NoteCreate(BaseModel):

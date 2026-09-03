@@ -11,6 +11,7 @@ Rules (per spec):
 import json
 import os
 import secrets
+import time
 import warnings
 import hashlib
 import urllib.parse
@@ -56,6 +57,13 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
+# Login-CSRF protection: a per-session nonce is stored in an HttpOnly cookie
+# before the redirect, and validated against the `state` Google echoes back.
+GOOGLE_OAUTH_STATE_COOKIE = "google_oauth_state"
+# One-time sign-in codes live at most 2 minutes (single-use + short expiry,
+# so an access token is never placed in the redirect URL).
+GOOGLE_EXCHANGE_TTL_SECONDS = 120
+
 
 def google_oauth_configured() -> bool:
     """True only when both Google credentials are present."""
@@ -67,8 +75,12 @@ def google_callback_url(base_url: str) -> str:
     return f"{base_url.rstrip('/')}/auth/google/callback"
 
 
-def google_authorize_url(base_url: str) -> str:
-    """Build the Google sign-in consent URL the browser is redirected to."""
+def google_authorize_url(base_url: str, state: str = "") -> str:
+    """Build the Google sign-in consent URL the browser is redirected to.
+
+    `state` is the CSRF nonce the app minted for this attempt; Google echoes
+    it back on the callback, where the app compares it to the cookie value.
+    """
     params = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": google_callback_url(base_url),
@@ -77,6 +89,8 @@ def google_authorize_url(base_url: str) -> str:
         "access_type": "online",
         "prompt": "select_account",
     }
+    if state:
+        params["state"] = state
     return GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
 
 
@@ -117,6 +131,47 @@ def google_fetch_profile(code: str, base_url: str) -> dict:
     )
     with urllib.request.urlopen(profile_req, timeout=20) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
+
+# --- One-time Google sign-in exchange codes ------------------------------ #
+# After the OAuth callback verifies the user, instead of redirecting with an
+# access token in the URL (which leaks into history / server logs), the app
+# mints a single-use, short-lived code. The SPA POSTs it to
+# POST /auth/google/exchange to redeem it for a real JWT over a normal
+# JSON request. In-memory store is acceptable for a single-process deploy;
+# codes are short-lived (GOOGLE_EXCHANGE_TTL_SECONDS) and burned on use.
+_google_exchange_codes: dict[str, tuple[int, float]] = {}
+
+
+def _prune_google_exchanges() -> None:
+    now = time.monotonic()
+    for code, (_, issued_at) in list(_google_exchange_codes.items()):
+        if now - issued_at > GOOGLE_EXCHANGE_TTL_SECONDS:
+            del _google_exchange_codes[code]
+
+
+def issue_google_exchange(user_id: int) -> str:
+    """Mint a one-time sign-in code redeemable for a JWT (2-minute TTL)."""
+    _prune_google_exchanges()
+    code = secrets.token_urlsafe(32)
+    _google_exchange_codes[code] = (user_id, time.monotonic())
+    return code
+
+
+def consume_google_exchange(code: str) -> int:
+    """Redeem a one-time sign-in code; raises 400 if missing/used/expired.
+
+    The code is always removed from the store (single-use even on failure)
+    so a leaked code cannot be replayed.
+    """
+    _prune_google_exchanges()
+    entry = _google_exchange_codes.pop(code, None)
+    if entry is None:
+        raise HTTPException(
+            status_code=400, detail="This sign-in link is invalid or has expired — please sign in again."
+        )
+    return entry[0]
+
 
 # --- Password hashing (bcrypt, used directly) ---------------------------- #
 # Note: the spec originally suggested passlib[bcrypt], but passlib 1.7.4 is

@@ -99,6 +99,23 @@ def _check_rate_limit(user_id: int) -> None:
     window.append(now)
 
 
+def _refund_rate_use(user_id: int) -> None:
+    """Give back one rate-limit slot after a failed request.
+
+    _check_rate_limit() reserves a slot up front; if the agent loop then
+    fails (provider 502, AI disabled, unexpected error) the user shouldn't
+    lose part of their hourly quota to a provider outage. Single-process
+    note: concurrent requests for the same user could theoretically refund
+    each other's slot; acceptable for the deployed single-process tier.
+    """
+    window = _chat_windows.get(user_id)
+    if window:
+        try:
+            window.pop()
+        except IndexError:
+            pass
+
+
 # --------------------------- status endpoint ------------------------------ #
 
 
@@ -274,10 +291,18 @@ def _run_agent(db: Session, user: models.User, message: str, history: list[dict]
 
     turns: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
     for hturn in (history or [])[-8:]:
+        # The client supplies the history, so trust nothing: only plain
+        # "user"/"assistant" text turns pass through (blocking forged
+        # "assistant_tool"/"tool" framing), and every value is re-bounded.
+        if not isinstance(hturn, dict):
+            continue
+        role = hturn.get("role")
+        if role not in ("user", "assistant"):
+            continue
         content = str(hturn.get("content") or "")[:4000]
         if not content:
             continue
-        if hturn.get("role") == "assistant":
+        if role == "assistant":
             turns.append({"role": "assistant", "text": content})
         else:
             turns.append({"role": "user", "content": content})
@@ -324,7 +349,12 @@ def _run_agent(db: Session, user: models.User, message: str, history: list[dict]
 @router.post("/chat", response_model=ChatOut, summary="Talk to the AI assistant")
 def ai_chat(body: ChatIn, db: DbSession, user: CurrentUser) -> ChatOut:
     _check_rate_limit(user.id)
-    reply, actions, tool_events = _run_agent(db, user, body.message, body.history)
+    try:
+        reply, actions, tool_events = _run_agent(db, user, body.message, body.history)
+    except Exception:
+        # Never charge the user's hourly quota for a call that failed.
+        _refund_rate_use(user.id)
+        raise
     return ChatOut(reply=reply, actions=actions, tool_events=tool_events)
 
 

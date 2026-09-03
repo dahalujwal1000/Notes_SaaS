@@ -14,9 +14,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from contextlib import asynccontextmanager  # noqa: E402
+from hashlib import sha256  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from fastapi import FastAPI  # noqa: E402
+from fastapi.responses import HTMLResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 import models  # noqa: E402, F401 — imported so create_all() sees every model
@@ -112,6 +114,27 @@ app.include_router(ai.router)
 def health():
     """JSON health probe (the homepage itself is the static app UI)."""
     return {"status": "ok", "docs": "/docs"}
+
+
+def _asset_version(path: Path) -> str:
+    """Short content hash of a static asset, used to cache-bust it.
+
+    The version changes whenever the file's bytes change, so browsers pick
+    up a fresh deploy immediately — no more hand-editing `?v=` query strings.
+    """
+    try:
+        return sha256(path.read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "0"
+
+
+@app.get("/", include_in_schema=False, tags=["ui"])
+def index() -> HTMLResponse:
+    """Serve the SPA with hash-busting versions for app.js / style.css."""
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = html.replace("__APP_VERSION__", _asset_version(STATIC_DIR / "app.js"))
+    html = html.replace("__CSS_VERSION__", _asset_version(STATIC_DIR / "style.css"))
+    return HTMLResponse(html)
 
 
 # Static UI last, so API routes always win over the SPA catch-all mount.

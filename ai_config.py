@@ -35,9 +35,10 @@ AI_MAX_STEPS = int(os.environ.get("AI_MAX_STEPS") or "5")
 AI_RATE_LIMIT_PER_HOUR = int(os.environ.get("AI_RATE_LIMIT_PER_HOUR") or "30")
 
 # Default models per provider (used when AI_MODEL is not set).
-# gemini-2.5-flash was retired for new accounts; the current free-tier
-# flash model is what Google's API now recommends.
-GEMINI_DEFAULT_MODEL = "gemini-3.6-flash"
+# Gemini: "gemini-2.5-flash" is the current stable free-tier flash model
+# (check Google's docs if you want a newer one). Mistral's free tier uses
+# "mistral-small-latest"; Groq's free tier serves Llama 3.3 70B.
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
 MISTRAL_DEFAULT_MODEL = "mistral-small-latest"
 GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
 MOCK_MODEL = "mock-agent-v1"

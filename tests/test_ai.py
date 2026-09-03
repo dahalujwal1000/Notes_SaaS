@@ -9,10 +9,10 @@ and auth requirements.
 import json
 
 import pytest
+from conftest import auth_headers
 
 import ai_config
 import ai_providers
-from conftest import auth_headers, unique_email
 
 
 def _chat(client, headers, message):
@@ -188,8 +188,8 @@ def test_audit_trail_records_mutations(client):
     )
     client.post(f"/ai/actions/{action_id}/confirm", headers=headers)
 
-    from database import SessionLocal
     import models
+    from database import SessionLocal
 
     db = SessionLocal()
     try:

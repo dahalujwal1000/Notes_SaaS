@@ -363,11 +363,15 @@ def resend_verification(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not send the verification email right now",
-        )
+        ) from None
     return {"message": "Verification email sent"}
 
 
-@router.post("/resend-verification-email", response_model=dict, summary="Re-send a verification link (public, by email)")
+@router.post(
+    "/resend-verification-email",
+    response_model=dict,
+    summary="Re-send a verification link (public, by email)",
+)
 def resend_verification_email_pub(
     request: Request,
     db: DbSession,
@@ -410,7 +414,7 @@ def forgot_password(
         try:
             _throttle_reset(db, user.email, ip)
             token = auth.issue_reset_token(user, db)
-            reset_url = f"{str(request.base_url)}reset-password.html?token={token}"
+            reset_url = f"{request.base_url!s}reset-password.html?token={token}"
             mailer.send_password_reset_email(user.email, reset_url)
         except HTTPException:
             pass

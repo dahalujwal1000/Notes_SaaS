@@ -13,9 +13,9 @@ from dotenv import load_dotenv
 # and on hosting platforms env vars come from the dashboard instead.
 load_dotenv()
 
+import os  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
 from hashlib import sha256  # noqa: E402
-import os  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from fastapi import FastAPI  # noqa: E402
@@ -108,7 +108,8 @@ def _ensure_columns() -> None:
     ones. This tiny migration adds the email-verification columns to the
     `users` table (and the favorite star to `notes`) in place.
     """
-    from sqlalchemy import inspect as sa_inspect, text
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
 
     dialect = engine.dialect.name
     inspector = sa_inspect(engine)

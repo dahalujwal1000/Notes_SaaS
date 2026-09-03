@@ -42,7 +42,8 @@ print(f"MAIL_BACKEND        = {backend}")
 print(f"Provider            = {provider}")
 print(f"MAIL_USER           = {user or '(not set)'}")
 if password:
-    print(f"MAIL_APP_PASSWORD   = set ({len(password)} chars, Brevo SMTP key)" if is_brevo else "MAIL_APP_PASSWORD   = set (" + str(len(password)) + " chars)")
+    kind = "chars, Brevo SMTP key" if is_brevo else "chars"
+    print(f"MAIL_APP_PASSWORD   = set ({len(password)} {kind})")
 else:
     print("MAIL_APP_PASSWORD   = (NOT SET)")
 print(f"MAIL_HOST / PORT    = {host}:{port}")
@@ -112,7 +113,7 @@ except smtplib.SMTPAuthenticationError as err:
         print("Likely causes: wrong App Password / SMTP login, or 2-Step Verification")
         print("  is off (Gmail), or a stray space in the key.")
     sys.exit(3)
-except Exception as err:  # noqa: BLE001
+except Exception as err:
     print("Mail test FAILED:")
     print(f"  {type(err).__name__}: {err}")
     sys.exit(4)

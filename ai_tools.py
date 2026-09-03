@@ -168,7 +168,10 @@ TOOLS = [
     },
     {
         "name": "update_task",
-        "description": "Move a task to another column (status) and/or rename it. Identify by task_id or title_search.",
+        "description": (
+            "Move a task to another column (status) and/or rename it. "
+            "Identify by task_id or title_search."
+        ),
         "args_model": UpdateTaskArgs,
         "destructive": False,
         "mutating": True,
@@ -196,7 +199,10 @@ TOOLS = [
     },
     {
         "name": "confirm_action",
-        "description": "Execute a previously proposed destructive action by its action_id (e.g. actually delete the task).",
+        "description": (
+            "Execute a previously proposed destructive action by its action_id "
+            "(e.g. actually delete the task)."
+        ),
         "args_model": ConfirmActionArgs,
         "destructive": False,
         "mutating": True,

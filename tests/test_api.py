@@ -10,8 +10,7 @@ isolated SQLite test database and resets the schema for every test.
 INVALID_AUTH = {"Authorization": "Bearer not-a-valid-token"}
 
 # Helpers live in conftest.py so both test modules share them.
-from conftest import auth_headers, signup, unique_email, verify_last_signup  # noqa: E402, F401
-
+from conftest import auth_headers, signup, unique_email, verify_last_signup  # noqa: E402
 
 # -------------------------------- auth ----------------------------------- #
 
@@ -292,7 +291,7 @@ def test_favorite_cannot_touch_other_users_notes(client):
 
 def test_favorite_persists_in_list(client):
     headers = auth_headers(client)
-    a = client.post("/notes", json={"title": "A"}, headers=headers).json()
+    client.post("/notes", json={"title": "A"}, headers=headers)
     b = client.post("/notes", json={"title": "B"}, headers=headers).json()
     client.put(f"/notes/{b['id']}/favorite", json={"favorite": True}, headers=headers)
     notes = {n["title"]: n for n in client.get("/notes", headers=headers).json()}

@@ -8,14 +8,14 @@ Rules (per spec):
 - SECRET_KEY comes from the environment — never hardcoded.
 """
 
+import hashlib
 import json
 import os
 import secrets
 import time
-import warnings
-import hashlib
 import urllib.parse
 import urllib.request
+import warnings
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -37,7 +37,8 @@ if not SECRET_KEY:
     # Set SECRET_KEY (or a .env file) for anything beyond local dev.
     warnings.warn(
         "SECRET_KEY env var is not set; using an ephemeral random key "
-        "(tokens will be invalidated on restart)."
+        "(tokens will be invalidated on restart).",
+        stacklevel=2,
     )
     SECRET_KEY = secrets.token_urlsafe(32)
 
@@ -225,7 +226,7 @@ def get_current_user(
             raise credentials_exception
         user_id = int(subject)
     except (JWTError, ValueError):
-        raise credentials_exception
+        raise credentials_exception from None
 
     user = db.get(models.User, user_id)
     if user is None:

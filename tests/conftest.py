@@ -94,6 +94,7 @@ def verify_last_signup(client):
     """Verify the user created by the most recent signup — as a real user
     would — by pulling the token from the captured (console) email."""
     import re
+
     from mailer import OUTBOX
 
     html = OUTBOX[-1]["html"]

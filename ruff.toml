@@ -1,0 +1,19 @@
+# Ruff lint configuration — https://docs.astral.sh/ruff/
+# Focused ruleset: correctness (E/F), import hygiene (I), bugbear (B), RUF.
+target-version = "py311"
+line-length = 110
+extend-exclude = ["venv"]
+
+[lint]
+select = ["E", "F", "W", "I", "B", "RUF"]
+ignore = [
+    "B008", # FastAPI pattern: Depends()/Query() calls in argument defaults
+]
+
+[lint.per-file-ignores]
+# Defensive broad catches are intentional where noted (tool executor must
+# never crash the chat; startup migration tolerates missing tables).
+"ai_tools.py" = ["BLE001"]
+"main.py" = ["BLE001"]
+# Tests build ORM objects directly and use short throwaway names.
+"tests/*" = ["RUF012"]

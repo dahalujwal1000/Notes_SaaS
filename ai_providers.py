@@ -261,7 +261,10 @@ def _mistral_chat(model: str, api_key: str, turns: list[dict]) -> dict:
 
 # ------------------------------- mock ------------------------------------ #
 
-_STATUS_WORDS = r"(?:to-?do|backlog|doing|in-? ?progress|wip|ongoing|review|in-? ?review|done|complete|completed|finished)"
+_STATUS_WORDS = (
+    r"(?:to-?do|backlog|doing|in-? ?progress|wip|ongoing|"
+    r"review|in-? ?review|done|complete|completed|finished)"
+)
 _TASK_RE = re.compile(
     rf"\b(?:create|add|new)\s+(?:a\s+)?task\s+(?P<title>.+?)(?:\s+(?:in|to|under)\s+(?P<status>{_STATUS_WORDS}))?\s*$",
     re.IGNORECASE,
@@ -313,7 +316,10 @@ def _mock_chat(turns: list[dict]) -> dict:
     # Plain follow-ups: "yes" confirms the pending delete proposal, "no" cancels it.
     low = text.lower()
     pending = _find_pending_proposal(turns)
-    if pending is not None and low in {"yes", "yep", "yeah", "yup", "sure", "go ahead", "confirm", "ok", "okay", "do it", "please"}:
+    if pending is not None and low in {
+        "yes", "yep", "yeah", "yup", "sure", "go ahead",
+        "confirm", "ok", "okay", "do it", "please",
+    }:
         return {"type": "tool_call", "name": "confirm_action", "args": {"action_id": pending}}
     if pending is not None and low in {"no", "nope", "nah", "cancel", "never mind", "dont", "don't", "stop"}:
         return {"type": "tool_call", "name": "cancel_action", "args": {"action_id": pending}}
@@ -321,13 +327,21 @@ def _mock_chat(turns: list[dict]) -> dict:
     m = _TASK_RE.search(text)
     if m:
         status = _norm_status(m.group("status")) or "todo"
-        return {"type": "tool_call", "name": "create_task", "args": {"title": m.group("title").strip().strip('"'), "status": status}}
+        return {
+            "type": "tool_call",
+            "name": "create_task",
+            "args": {"title": m.group("title").strip().strip('"'), "status": status},
+        }
 
     m = _MOVE_RE.search(text)
     if m:
         status = _norm_status(m.group("status"))
         if status:
-            return {"type": "tool_call", "name": "update_task", "args": {"title_search": m.group("title").strip().strip('"'), "status": status}}
+            return {
+                "type": "tool_call",
+                "name": "update_task",
+                "args": {"title_search": m.group("title").strip().strip('"'), "status": status},
+            }
 
     delete_re = re.search(
         r"\b(delete|remove)\s+(?:the\s+)?(?P<kind>task|note)?\s*(?P<title>.+)",
@@ -342,7 +356,10 @@ def _mock_chat(turns: list[dict]) -> dict:
             title,
             flags=re.IGNORECASE,
         ).strip() or title
-        if (delete_re.group("kind") or "").lower() == "note" or re.search(r"\bnote\b", delete_re.group(0), re.IGNORECASE):
+        kind_is_note = (delete_re.group("kind") or "").lower() == "note" or re.search(
+            r"\bnote\b", delete_re.group(0), re.IGNORECASE
+        )
+        if kind_is_note:
             return {"type": "tool_call", "name": "delete_note", "args": {"title_search": title}}
         return {"type": "tool_call", "name": "delete_task", "args": {"title_search": title}}
 
@@ -386,7 +403,10 @@ def _mock_chat(turns: list[dict]) -> dict:
 
 def _mock_summarize(name: str, payload: dict) -> str:
     if not payload.get("ok"):
-        return f"Sorry — {payload.get('error', 'that did not work.')} Try 'show my tasks' so I can see what's there."
+        return (
+            f"Sorry — {payload.get('error', 'that did not work.')} "
+            "Try 'show my tasks' so I can see what's there."
+        )
     if name == "list_tasks":
         tasks = payload.get("tasks", [])
         if not tasks:

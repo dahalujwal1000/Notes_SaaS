@@ -9,9 +9,10 @@ so these tests exercise the real user flow: signup -> email link -> verify
 import re
 from datetime import datetime, timedelta, timezone
 
+from conftest import signup, unique_email
+
 import auth
 import models
-from conftest import auth_headers, signup, unique_email
 from database import SessionLocal
 from mailer import OUTBOX
 

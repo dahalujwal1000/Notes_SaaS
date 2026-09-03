@@ -1,6 +1,6 @@
 """Kanban task API tests — shares helpers/fixtures with test_api via conftest."""
 
-from conftest import auth_headers, signup, unique_email
+from conftest import auth_headers
 
 
 def test_tasks_require_auth(client):

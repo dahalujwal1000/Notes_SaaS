@@ -83,7 +83,7 @@ def login_token(username: str, password: str) -> str:
     detail = (payload.get("detail") or "").lower()
     if "verified" in detail or "verification" in detail:
         print(f"PASS  POST /auth/login -> {status} (email verification enforced ✓)")
-        print(f"PASS  unverified login blocked ✓")
+        print("PASS  unverified login blocked ✓")
         print()
         print("[gate] This server enforces email verification, so fresh signups cannot log in yet —")
         print("[gate] exactly as intended. smoke_test can't click the emailed link over HTTP.")
@@ -106,7 +106,7 @@ pw = "secret123"
 
 # --- Auth ---------------------------------------------------------------- #
 call("POST", "/auth/signup", {"email": u1, "password": pw}, expected=201)
-call("POST", "/auth/signup", {"email": u1, "password": pw}, expected=201)  # non-enumerating: same response for duplicates
+call("POST", "/auth/signup", {"email": u1, "password": pw}, expected=201)  # non-enumerating dup
 token1 = login_token(u1, pw)
 call("POST", "/auth/login", {"username": u1, "password": "wrong-pass"}, form=True, expected=401)
 

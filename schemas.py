@@ -27,7 +27,7 @@ def _bcrypt_safe(password: str) -> str:
     return password
 
 
-# Shared password type: 8–128 chars AND at most 72 bytes once UTF-8 encoded.
+# Shared password type: 8-128 chars AND at most 72 bytes once UTF-8 encoded.
 Password = Annotated[
     str, Field(min_length=8, max_length=128, examples=["supersecret123"]), AfterValidator(_bcrypt_safe)
 ]

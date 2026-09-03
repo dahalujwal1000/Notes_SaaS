@@ -195,5 +195,27 @@ in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
 > are `is_verified=true` immediately — no verification email, ever.
 4. Deploy. Swagger UI lives at `https://<your-app>.onrender.com/docs`.
 
+### AI assistant on Render — required env vars
+
+`.env` is gitignored, so **Render never sees your local AI key**. Without it
+the live app silently falls back to the offline mock agent (canned demo
+replies). To enable the real assistant on Render, add these in the Render
+dashboard → your service → **Environment** → *Add Environment Variable*, then
+**save and redeploy**:
+
+| Key               | Value                              |
+| ----------------- | ---------------------------------- |
+| `AI_PROVIDER`     | `mistral`                          |
+| `MISTRAL_API_KEY` | *(your Mistral key — console.mistral.ai → API keys)* |
+| `AI_ENABLED`      | `true` (optional — this is the default) |
+
+Optional tuning: `AI_MODEL` (default `mistral-small-latest`),
+`AI_REQUEST_TIMEOUT` (default `30`s per model call), `AI_MAX_STEPS`
+(default `5`), `AI_RATE_LIMIT_PER_HOUR` (default `30` per user).
+
+Verify after deploying: `https://<your-app>.onrender.com/ai/status` should
+report `"provider": "mistral"`. If it says `"mock"`, the key was not saved or
+the service hasn't been redeployed yet.
+
 Locally, the same variables can live in a `.env` file (loaded via
 python-dotenv, gitignored) — real environment variables always win.

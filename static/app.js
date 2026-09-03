@@ -75,7 +75,7 @@ const state = {
 
 /* ---------------- API helpers ---------------- */
 
-async function api(path, { method = "GET", body, form } = {}) {
+async function api(path, { method = "GET", body, form, signal } = {}) {
   const headers = {};
   let payload;
   if (form) {
@@ -86,7 +86,7 @@ async function api(path, { method = "GET", body, form } = {}) {
   }
   if (state.token) headers["Authorization"] = "Bearer " + state.token;
 
-  const resp = await fetch(API + path, { method, headers, body: payload });
+  const resp = await fetch(API + path, { method, headers, body: payload, signal });
 
   if (resp.status === 401 && state.token && !path.startsWith("/auth")) {
     logout();
@@ -1355,10 +1355,18 @@ async function aiEnsureStatus() {
   if (!aiState.status.enabled) {
     aiEls.notice.textContent =
       "The AI assistant is disabled on this server. Set AI_ENABLED=true and " +
-      "configure an AI_PROVIDER / AI_API_KEY to enable it.";
+      "configure an AI_PROVIDER / MISTRAL_API_KEY to enable it.";
     aiEls.notice.hidden = false;
     aiEls.input.disabled = true;
     aiEls.send.disabled = true;
+  } else if (aiState.status.provider === "mock") {
+    // Server has no AI key — the offline mock agent answers with canned
+    // replies. Make that explicit instead of looking like a broken chat.
+    aiEls.notice.textContent =
+      "Demo mode — no AI key is configured on this server, so replies are " +
+      "canned. Set AI_PROVIDER=mistral and MISTRAL_API_KEY in the server " +
+      "environment (Render dashboard → Environment) for the real assistant.";
+    aiEls.notice.hidden = false;
   }
   return aiState.status;
 }
@@ -1456,8 +1464,16 @@ async function aiSend(event) {
   aiState.busy = true;
   aiEls.send.disabled = true;
   const thinking = aiThinking();
+  // Abort if the server never answers — otherwise aiState.busy would stick
+  // and every later Enter press would silently do nothing.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 180000);
   try {
-    const res = await api("/ai/chat", { method: "POST", body: { message: text } });
+    const res = await api("/ai/chat", {
+      method: "POST",
+      body: { message: text },
+      signal: controller.signal,
+    });
     thinking.remove();
     for (const action of res.actions || []) {
       if (action.status === "proposed" && action.action_id != null) {
@@ -1471,8 +1487,14 @@ async function aiSend(event) {
     if ((res.actions || []).some((a) => a.status === "executed")) aiRefreshData();
   } catch (err) {
     thinking.remove();
-    aiBubble("⚠️ " + err.message, "bot");
+    aiBubble(
+      err.name === "AbortError"
+        ? "⚠️ The assistant took too long to answer — please try again."
+        : "⚠️ " + err.message,
+      "bot"
+    );
   } finally {
+    clearTimeout(timeout);
     aiState.busy = false;
     aiEls.send.disabled = false;
     aiEls.input.focus();

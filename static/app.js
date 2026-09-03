@@ -1338,7 +1338,7 @@ document.addEventListener("click", (event) => {
    ============================================================ */
 
 const aiEls = {
-  btn: $("ai-chat-btn"), panel: $("ai-panel"), close: $("ai-close"),
+  btn: $("ai-chat-btn"), fab: $("ai-fab"), panel: $("ai-panel"), close: $("ai-close"),
   messages: $("ai-messages"), notice: $("ai-notice"),
   form: $("ai-form"), input: $("ai-input"), send: $("ai-send"),
 };
@@ -1365,12 +1365,14 @@ async function aiEnsureStatus() {
 
 function aiOpen() {
   aiEls.panel.hidden = false;
+  aiEls.fab.classList.add("is-hidden");
   aiEnsureStatus();
   aiEls.input.focus();
 }
 
 function aiClose() {
   aiEls.panel.hidden = true;
+  aiEls.fab.classList.remove("is-hidden");
 }
 
 function aiBubble(text, who) {
@@ -1494,6 +1496,7 @@ async function aiSend(event) {
 }
 
 aiEls.btn.addEventListener("click", aiOpen);
+aiEls.fab.addEventListener("click", aiOpen);
 aiEls.close.addEventListener("click", aiClose);
 aiEls.form.addEventListener("submit", aiSend);
 document.addEventListener("keydown", (e) => {

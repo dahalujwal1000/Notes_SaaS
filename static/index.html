@@ -16,7 +16,7 @@
     document.documentElement.dataset.theme = t;
   })();
 </script>
-<link rel="stylesheet" href="style.css?v=20260903a">
+<link rel="stylesheet" href="style.css?v=20260903d">
 </head>
 <body>
 
@@ -216,6 +216,16 @@
     </section>
   </main>
 
+  <!-- Floating AI assistant bubble (bottom-right) -->
+  <button id="ai-fab" class="ai-fab" type="button" aria-label="Open AI assistant" title="AI Assistant">
+    <svg class="ai-fab-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
+      <path d="M12 2.6l2.1 5.9 5.9 2.1-5.9 2.1L12 18.6l-2.1-5.9L4 10.6l5.9-2.1L12 2.6z"></path>
+      <path d="M19 14.2l.85 2.45 2.45.85-2.45.85-.85 2.45-.85-2.45-2.45-.85 2.45-.85.85-2.45z" opacity=".8"></path>
+    </svg>
+    <span class="ai-fab-label">Ask AI</span>
+    <span class="ai-fab-dot" aria-hidden="true"></span>
+  </button>
+
   <!-- AI assistant slide-over panel -->
   <aside id="ai-panel" class="ai-panel" hidden aria-label="AI assistant">
     <header class="ai-head">
@@ -263,7 +273,7 @@
   <div id="float-stack" class="float-stack" aria-live="polite"></div>
 </div>
 
-<script src="app.js?v=20260903c"></script>
+<script src="app.js?v=20260903d"></script>
 </body>
 </html>
 

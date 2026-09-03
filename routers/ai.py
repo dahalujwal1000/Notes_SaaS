@@ -287,7 +287,7 @@ def _run_agent(db: Session, user: models.User, message: str, history: list[dict]
     reply: str | None = None
 
     model = ai_config.AI_MODEL or ai_config.default_model(provider)
-    api_key = ai_config.AI_API_KEY
+    api_key = ai_config.api_key_for(provider)
 
     for _ in range(max(1, ai_config.AI_MAX_STEPS)):
         try:

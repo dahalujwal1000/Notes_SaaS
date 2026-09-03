@@ -19,6 +19,7 @@ os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"  # exercise the hard gate
 os.environ["AI_PROVIDER"] = "mock"
 os.environ["AI_API_KEY"] = ""
 os.environ["GEMINI_API_KEY"] = ""
+os.environ["MISTRAL_API_KEY"] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

@@ -11,6 +11,7 @@ import json
 import pytest
 
 import ai_config
+import ai_providers
 import routers.ai as ai_router
 from conftest import auth_headers, unique_email
 
@@ -217,3 +218,121 @@ def test_disabled_returns_403(monkeypatch, client):
     headers = auth_headers(client)
     resp = _chat(client, headers, "show my tasks")
     assert resp.status_code == 403
+
+
+
+# ----------------------- mistral provider adapter ------------------------- #
+
+
+class _FakeResp:
+    """Stand-in for httpx.Response with just the parts _openai_chat uses."""
+
+    def __init__(self, payload, status_code=200, text=""):
+        self._payload = payload
+        self.status_code = status_code
+        self.text = text
+
+    def json(self):
+        return self._payload
+
+
+def test_mistral_config_selection(monkeypatch):
+    monkeypatch.setattr(ai_config, "AI_PROVIDER", "mistral")
+    monkeypatch.setattr(ai_config, "AI_API_KEY", "google-key")
+    monkeypatch.setattr(ai_config, "MISTRAL_API_KEY", "mistral-key")
+    assert ai_config.effective_provider() == "mistral"
+    assert ai_config.default_model("mistral") == ai_config.MISTRAL_DEFAULT_MODEL
+    assert ai_config.api_key_for("mistral") == "mistral-key"
+    assert ai_config.api_key_for("gemini") == "google-key"
+
+
+def test_mistral_key_implies_mistral_provider(monkeypatch):
+    monkeypatch.setattr(ai_config, "AI_PROVIDER", "")
+    monkeypatch.setattr(ai_config, "AI_API_KEY", "")
+    monkeypatch.setattr(ai_config, "MISTRAL_API_KEY", "secret")
+    assert ai_config.effective_provider() == "mistral"
+
+
+def test_openai_messages_tool_pairing():
+    turns = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "hello"},
+        {"role": "assistant_tool", "name": "list_tasks", "args": {}},
+        {"role": "tool", "name": "list_tasks", "payload": {"ok": True}},
+    ]
+    msgs = ai_providers._openai_messages(turns)
+    assert msgs[0] == {"role": "system", "content": "sys"}
+    assert msgs[1] == {"role": "user", "content": "hello"}
+    assert msgs[2]["role"] == "assistant"
+    assert msgs[2]["tool_calls"][0]["id"] == "call_0"
+    assert msgs[2]["tool_calls"][0]["function"]["name"] == "list_tasks"
+    assert msgs[3]["role"] == "tool"
+    assert msgs[3]["tool_call_id"] == "call_0"
+    assert json.loads(msgs[3]["content"]) == {"ok": True}
+
+
+def test_mistral_chat_text_reply(monkeypatch):
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None, **kwargs):
+        captured["url"] = url
+        captured["auth"] = headers["Authorization"]
+        captured["model"] = json["model"]
+        assert json["tools"], "Mistral request must advertise the tool catalogue"
+        return _FakeResp(
+            {"choices": [{"message": {"role": "assistant", "content": "All set \u2705"}}]}
+        )
+
+    monkeypatch.setattr(ai_providers.httpx, "post", fake_post)
+    out = ai_providers.chat(
+        "mistral", "mistral-small-latest", "secret", [{"role": "user", "content": "hi"}]
+    )
+    assert out == {"type": "text", "text": "All set \u2705"}
+    assert captured["url"] == ai_providers._MISTRAL_URL
+    assert captured["auth"] == "Bearer secret"
+
+
+def test_mistral_chat_tool_call(monkeypatch):
+    payload = {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_0",
+                            "type": "function",
+                            "function": {"name": "list_tasks", "arguments": "{}"},
+                        }
+                    ],
+                }
+            }
+        ]
+    }
+
+    monkeypatch.setattr(
+        ai_providers.httpx, "post", lambda url, **kwargs: _FakeResp(payload)
+    )
+    out = ai_providers.chat(
+        "mistral",
+        "mistral-small-latest",
+        "secret",
+        [{"role": "user", "content": "list my tasks"}],
+    )
+    assert out == {"type": "tool_call", "name": "list_tasks", "args": {}}
+
+
+def test_mistral_chat_rejects_bad_key(monkeypatch):
+    monkeypatch.setattr(
+        ai_providers.httpx,
+        "post",
+        lambda url, **kwargs: _FakeResp({}, status_code=401, text="unauthorized"),
+    )
+    with pytest.raises(RuntimeError, match="rejected the API key"):
+        ai_providers.chat(
+            "mistral",
+            "mistral-small-latest",
+            "bad-key",
+            [{"role": "user", "content": "hi"}],
+        )

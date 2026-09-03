@@ -9,6 +9,9 @@ Providers:
   - "gemini" — Google AI Studio REST API (generateContent) with native
                function calling. Free tier, no credit card.
   - "groq"   — OpenAI-compatible chat completions on Groq's free tier.
+  - "mistral" — OpenAI-compatible chat completions on Mistral
+               (api.mistral.ai). Same function-calling wire protocol as Groq,
+               so both share the OpenAI-compatible adapter below.
 
 Abstract conversation "turns" (provider-agnostic, built by routers/ai.py):
   {"role": "system",  "content": str}
@@ -55,7 +58,7 @@ def _gemini_tools() -> list[dict]:
     ]
 
 
-def _groq_tools() -> list[dict]:
+def _openai_tools() -> list[dict]:
     return [
         {
             "type": "function",
@@ -76,6 +79,8 @@ def chat(provider: str, model: str, api_key: str, turns: list[dict]) -> dict:
         return _gemini_chat(model, api_key, turns)
     if provider == "groq":
         return _groq_chat(model, api_key, turns)
+    if provider == "mistral":
+        return _mistral_chat(model, api_key, turns)
     raise RuntimeError(f"Unknown AI provider '{provider}'")
 
 
@@ -157,12 +162,17 @@ def _gemini_chat(model: str, api_key: str, turns: list[dict]) -> dict:
     return {"type": "text", "text": text or "…"}
 
 
-# ------------------------------- groq ------------------------------------ #
+# ------------------- OpenAI-compatible (groq, mistral) -------------------- #
 
 _GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+_MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 
 
-def _groq_messages(turns: list[dict]) -> list[dict]:
+def _openai_messages(turns: list[dict]) -> list[dict]:
+    """Build chat-completions messages for any OpenAI-compatible provider
+    (Groq, Mistral, …). Synthesises a tool_call id for each assistant_tool
+    turn so the following tool turn can reference it — both APIs require the
+    tool message's tool_call_id to match the call it answers."""
     messages: list[dict] = []
     pending_id: str | None = None
     n = 0
@@ -203,17 +213,17 @@ def _groq_messages(turns: list[dict]) -> list[dict]:
     return messages
 
 
-def _groq_chat(model: str, api_key: str, turns: list[dict]) -> dict:
+def _openai_chat(url: str, label: str, model: str, api_key: str, turns: list[dict]) -> dict:
     import ai_config
 
     try:
         resp = httpx.post(
-            _GROQ_URL,
+            url,
             headers={"Authorization": f"Bearer {api_key}"},
             json={
                 "model": model,
-                "messages": _groq_messages(turns),
-                "tools": _groq_tools(),
+                "messages": _openai_messages(turns),
+                "tools": _openai_tools(),
                 "tool_choice": "auto",
                 "temperature": 0.2,
                 "max_tokens": 1024,
@@ -221,13 +231,13 @@ def _groq_chat(model: str, api_key: str, turns: list[dict]) -> dict:
             timeout=ai_config.AI_REQUEST_TIMEOUT,
         )
     except httpx.HTTPError as exc:
-        raise RuntimeError(f"Could not reach the Groq API: {exc}") from exc
+        raise RuntimeError(f"Could not reach the {label} API: {exc}") from exc
     if resp.status_code == 429:
-        raise RuntimeError("Groq free-tier rate limit reached — try again later.")
+        raise RuntimeError(f"{label} free-tier rate limit reached — try again later.")
     if resp.status_code in (401, 403):
-        raise RuntimeError("Groq rejected the API key — check AI_API_KEY.")
+        raise RuntimeError(f"{label} rejected the API key — check the configured key.")
     if resp.status_code >= 400:
-        raise RuntimeError(f"Groq API error {resp.status_code}: {resp.text[:200]}")
+        raise RuntimeError(f"{label} API error {resp.status_code}: {resp.text[:200]}")
 
     message = resp.json()["choices"][0]["message"]
     calls = message.get("tool_calls") or []
@@ -239,6 +249,14 @@ def _groq_chat(model: str, api_key: str, turns: list[dict]) -> dict:
             args = {}
         return {"type": "tool_call", "name": fn["name"], "args": args}
     return {"type": "text", "text": (message.get("content") or "…").strip()}
+
+
+def _groq_chat(model: str, api_key: str, turns: list[dict]) -> dict:
+    return _openai_chat(_GROQ_URL, "Groq", model, api_key, turns)
+
+
+def _mistral_chat(model: str, api_key: str, turns: list[dict]) -> dict:
+    return _openai_chat(_MISTRAL_URL, "Mistral", model, api_key, turns)
 
 
 # ------------------------------- mock ------------------------------------ #

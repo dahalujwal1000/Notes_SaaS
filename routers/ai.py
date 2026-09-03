@@ -17,8 +17,6 @@ Safety:
 """
 
 import json
-import time
-from collections import defaultdict, deque
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -30,6 +28,7 @@ import ai_config
 import ai_providers
 import ai_tools
 import models
+import ratelimit
 from auth import get_current_user
 from database import get_db
 
@@ -80,40 +79,30 @@ class ChatOut(BaseModel):
 
 # ---------------------- rate limiting (per user) ------------------------- #
 
-_chat_windows: dict[int, deque] = defaultdict(deque)
+
+def _rate_bucket(user_id: int) -> str:
+    return f"ai:user:{user_id}"
 
 
-def _check_rate_limit(user_id: int) -> None:
-    """Sliding 1-hour window.. In-memory: adequate for a single-process
-    deployment (Render free tier); a multi-worker setup would move this
-    to the DB or Redis.."""
-    now = time.monotonic()
-    window = _chat_windows[user_id]
-    while window and now - window[0] > 3600:
-        window.popleft()
-    if len(window) >= ai_config.AI_RATE_LIMIT_PER_HOUR:
+def _check_rate_limit(db: Session, user_id: int) -> None:
+    """Sliding 1-hour window per user, tracked in the DB so the quota is
+    enforced globally across workers and survives restarts."""
+    if ratelimit.count_events(db, _rate_bucket(user_id), 3600) >= ai_config.AI_RATE_LIMIT_PER_HOUR:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="AI request limit reached for this hour — please try again later..",
         )
-    window.append(now)
+    ratelimit.record(db, _rate_bucket(user_id))
 
 
-def _refund_rate_use(user_id: int) -> None:
+def _refund_rate_use(db: Session, user_id: int) -> None:
     """Give back one rate-limit slot after a failed request.
 
     _check_rate_limit() reserves a slot up front; if the agent loop then
     fails (provider 502, AI disabled, unexpected error) the user shouldn't
-    lose part of their hourly quota to a provider outage. Single-process
-    note: concurrent requests for the same user could theoretically refund
-    each other's slot; acceptable for the deployed single-process tier.
+    lose part of their hourly quota to a provider outage.
     """
-    window = _chat_windows.get(user_id)
-    if window:
-        try:
-            window.pop()
-        except IndexError:
-            pass
+    ratelimit.refund_last(db, _rate_bucket(user_id))
 
 
 # --------------------------- status endpoint ------------------------------ #
@@ -348,12 +337,12 @@ def _run_agent(db: Session, user: models.User, message: str, history: list[dict]
 
 @router.post("/chat", response_model=ChatOut, summary="Talk to the AI assistant")
 def ai_chat(body: ChatIn, db: DbSession, user: CurrentUser) -> ChatOut:
-    _check_rate_limit(user.id)
+    _check_rate_limit(db, user.id)
     try:
         reply, actions, tool_events = _run_agent(db, user, body.message, body.history)
     except Exception:
         # Never charge the user's hourly quota for a call that failed.
-        _refund_rate_use(user.id)
+        _refund_rate_use(db, user.id)
         raise
     return ChatOut(reply=reply, actions=actions, tool_events=tool_events)
 

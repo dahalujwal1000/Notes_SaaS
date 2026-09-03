@@ -125,3 +125,22 @@ class Event(Base):
     updated_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class RateLimitEvent(Base):
+    """Sliding-window rate-limit / throttle bookkeeping.
+
+    One row per counted event (a failed login, a verification-resend, an
+    AI chat turn, …) keyed by a `bucket` string. Stored in the DB (not
+    in memory) so limits survive process restarts and hold globally across
+    multiple workers. Rows older than the relevant window are pruned lazily
+    by the rate-limit helpers.
+    """
+
+    __tablename__ = "rate_limit_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    bucket: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )

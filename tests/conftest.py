@@ -14,6 +14,8 @@ os.environ["DATABASE_URL"] = "sqlite:///" + _test_db_path
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["MAIL_BACKEND"] = "console"
 os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"  # exercise the hard gate
+# Allow the TestClient's "testserver" Host header past TrustedHostMiddleware.
+os.environ["TRUSTED_HOSTS"] = "testserver,127.0.0.1,localhost,[::1],*.onrender.com"
 # AI assistant: force the offline mock provider so the suite never touches
 # the network, even if a real key exists in the developer's .env.
 os.environ["AI_PROVIDER"] = "mock"
@@ -64,18 +66,12 @@ def client(db_session):
 
 @pytest.fixture(autouse=True)
 def _reset_in_memory_guards():
-    """Clear per-process guard rails between tests so they can't leak state:
-    login-failure counters, verification/reset email throttles, the AI
-    rate-limit windows, and the one-time Google sign-in exchange codes."""
+    """Clear per-process in-memory guard rails between tests so they can't
+    leak state: the one-time Google sign-in exchange codes. (DB-backed rate
+    limits and email throttles live in tables that are dropped & recreated
+    for every test by the ``db_session`` fixture, so they need no cleanup.)"""
     import auth as auth_module
-    from routers import ai as ai_router
-    from routers import users as users_router
 
-    users_router._LOGIN_FAIL_BY_EMAIL.clear()
-    users_router._LOGIN_FAIL_BY_IP.clear()
-    users_router._LAST_RESEND.clear()
-    users_router._LAST_RESET.clear()
-    ai_router._chat_windows.clear()
     auth_module._google_exchange_codes.clear()
     yield
 

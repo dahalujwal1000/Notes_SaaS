@@ -15,17 +15,70 @@ load_dotenv()
 
 from contextlib import asynccontextmanager  # noqa: E402
 from hashlib import sha256  # noqa: E402
+import os  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.responses import HTMLResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
 
 import models  # noqa: E402, F401 — imported so create_all() sees every model
 from database import Base, engine  # noqa: E402
 from routers import ai, events, notes, tasks, users  # noqa: E402
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# ---------------------------------------------------------------------------
+# Security response headers (defense in depth; the SPA already renders all
+# dynamic content with textContent, which is XSS-safe).
+# ---------------------------------------------------------------------------
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Set hardening headers on every response (incl. static files)."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        )
+        response.headers.setdefault("Content-Security-Policy", _CSP)
+        if request.url.scheme == "https":
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
+
+
+# Allowed Host headers. This stops an attacker from issuing requests with a
+# forged Host header (e.g. `evil.com`) to make personally-addressed emails
+# (verification links) contain a malicious base URL. List custom domains via
+# TRUSTED_HOSTS="app.com,www.app.com" (comma-separated, supports *.wildcards).
+_TRUSTED_HOSTS = [
+    h.strip()
+    for h in os.environ.get(
+        "TRUSTED_HOSTS",
+        "127.0.0.1,localhost,[::1],*.onrender.com",
+    ).split(",")
+    if h.strip()
+]
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -102,6 +155,11 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+# Order: TrustedHost runs first (rejects forged Host headers), then the
+# security-headers layer wraps every response.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_TRUSTED_HOSTS, www_redirect=False)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(users.router)
 app.include_router(notes.router)

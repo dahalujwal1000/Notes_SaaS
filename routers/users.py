@@ -3,7 +3,6 @@
 import logging
 import os
 import secrets
-import time
 import urllib.parse
 from typing import Annotated
 
@@ -15,6 +14,7 @@ from sqlalchemy.orm import Session
 import auth
 import mailer
 import models
+import ratelimit
 import schemas
 from auth import create_access_token, get_current_user, hash_password, verify_password
 from database import get_db
@@ -38,75 +38,75 @@ def email_verification_required() -> bool:
     )
 
 
-# Simple in-memory resend throttle: at most one verification email per
-# address per minute (per-process — adequate for a demo/portfolio app).
-_LAST_RESEND: dict[str, float] = {}
-
-
-def _throttle_resend(email: str) -> None:
-    now = time.monotonic()
-    last = _LAST_RESEND.get(email.lower())
-    if last is not None and now - last < 60:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Please wait a minute before requesting another email",
-        )
-    _LAST_RESEND[email.lower()] = now
-
-
 # ---------------------------------------------------------------------------
-# Login brute-force protection (per email AND per IP).
-# After LOGIN_MAX_ATTEMPTS failed credential checks inside LOGIN_WINDOW the
-# endpoint returns 429. Like the other throttles this is per-process; a
-# multi-worker deployment would move it to Redis/DB.
+# Throttles & brute-force protection — all DB-backed (see ratelimit.py) so
+# limits survive restarts and hold across multiple workers.
 # ---------------------------------------------------------------------------
 LOGIN_MAX_ATTEMPTS = 5
 LOGIN_WINDOW_SECONDS = 900  # 15 minutes
-_LOGIN_FAIL_BY_EMAIL: dict[str, list[float]] = {}
-_LOGIN_FAIL_BY_IP: dict[str, list[float]] = {}
+SIGNUP_IP_LIMIT_PER_HOUR = 10
+FORGOT_IP_LIMIT_PER_HOUR = 10
+
+EMAIL_THROTTLE_SECONDS = 60  # at most one verification/reset email per minute
 
 
-def _prune_login_failures() -> None:
-    now = time.monotonic()
-    for bucket in (_LOGIN_FAIL_BY_EMAIL, _LOGIN_FAIL_BY_IP):
-        for key in list(bucket):
-            bucket[key] = [t for t in bucket[key] if now - t < LOGIN_WINDOW_SECONDS]
-            if not bucket[key]:
-                del bucket[key]
-
-
-def _login_attempt_allowed(email: str, ip: str) -> bool:
-    _prune_login_failures()
-    return (
-        len(_LOGIN_FAIL_BY_EMAIL.get(email.lower(), [])) < LOGIN_MAX_ATTEMPTS
-        and len(_LOGIN_FAIL_BY_IP.get(ip, [])) < LOGIN_MAX_ATTEMPTS
-    )
-
-
-def _record_login_failure(email: str, ip: str) -> None:
-    _LOGIN_FAIL_BY_EMAIL.setdefault(email.lower(), []).append(time.monotonic())
-    _LOGIN_FAIL_BY_IP.setdefault(ip, []).append(time.monotonic())
-
-
-def _reset_login_failures(email: str, ip: str) -> None:
-    _LOGIN_FAIL_BY_EMAIL.pop(email.lower(), None)
-    _LOGIN_FAIL_BY_IP.pop(ip, None)
-
-
-# Forgot-password throttle: reused by the (non-enumerating) signup path as
-# well, so an unregistered/verified address can never be used to spam an inbox.
-_LAST_RESET: dict[str, float] = {}
-
-
-def _throttle_reset(email: str) -> None:
-    now = time.monotonic()
-    last = _LAST_RESET.get(email.lower())
-    if last is not None and now - last < 60:
+def _throttle_resend(db: Session, email: str) -> None:
+    """At most one verification email per address per minute."""
+    if ratelimit.check_and_record(
+        db, f"resend:{email.lower()}", 1, EMAIL_THROTTLE_SECONDS
+    ):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Please wait a minute before requesting another email",
         )
-    _LAST_RESET[email.lower()] = now
+
+
+def _login_attempt_allowed(db: Session, email: str, ip: str) -> bool:
+    """True while neither the email nor the IP has exceeded the failure limit."""
+    return (
+        ratelimit.count_events(db, f"login:email:{email.lower()}", LOGIN_WINDOW_SECONDS)
+        < LOGIN_MAX_ATTEMPTS
+        and ratelimit.count_events(db, f"login:ip:{ip}", LOGIN_WINDOW_SECONDS)
+        < LOGIN_MAX_ATTEMPTS
+    )
+
+
+def _record_login_failure(db: Session, email: str, ip: str) -> None:
+    """Count one failed credential check for the email and the IP."""
+    ratelimit.record(db, f"login:email:{email.lower()}")
+    ratelimit.record(db, f"login:ip:{ip}")
+
+
+def _reset_login_failures(db: Session, email: str, ip: str) -> None:
+    """Clear the failure buckets on a successful login."""
+    ratelimit.reset(db, f"login:email:{email.lower()}")
+    ratelimit.reset(db, f"login:ip:{ip}")
+
+
+def _signup_ip_allowed(db: Session, ip: str) -> bool:
+    """At most SIGNUP_IP_LIMIT_PER_HOUR new signups per IP — blocks using the
+    signup form as a mail-bomb across arbitrary addresses."""
+    return not ratelimit.check_and_record(
+        db, f"signup:ip:{ip}", SIGNUP_IP_LIMIT_PER_HOUR, 3600
+    )
+
+
+def _forgot_ip_allowed(db: Session, ip: str) -> bool:
+    """At most FORGOT_IP_LIMIT_PER_HOUR reset requests per IP."""
+    return not ratelimit.check_and_record(
+        db, f"forgot:ip:{ip}", FORGOT_IP_LIMIT_PER_HOUR, 3600
+    )
+
+
+def _throttle_reset(db: Session, email: str, ip: str) -> None:
+    """At most one reset email per address per minute, and per-IP hourly cap."""
+    if ratelimit.check_and_record(
+        db, f"reset:{email.lower()}", 1, EMAIL_THROTTLE_SECONDS
+    ) or not _forgot_ip_allowed(db, ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Please wait a minute before requesting another email",
+        )
 
 
 @router.post(
@@ -123,7 +123,13 @@ def signup(user_in: schemas.UserCreate, request: Request, db: DbSession) -> dict
     verified. A caller cannot learn whether an email has an account.
     """
     existing_user = db.query(models.User).filter(models.User.email == user_in.email).first()
-    if existing_user is None:
+    ip = request.client.host if request.client else "unknown"
+    # Per-IP cap so the signup form can't be used as a mail-bomb: once the IP
+    # has created enough accounts this hour, we stop emailing (still 201, so
+    # the non-enumerating contract and the attacker's visibility are unchanged).
+    if not _signup_ip_allowed(db, ip):
+        logger.warning("signup mail-bomb guard: IP throttled %s", ip)
+    elif existing_user is None:
         user = models.User(
             email=user_in.email, hashed_password=hash_password(user_in.password)
         )
@@ -142,7 +148,7 @@ def signup(user_in: schemas.UserCreate, request: Request, db: DbSession) -> dict
         # hit is swallowed — the generic message keeps the endpoint
         # non-enumerating and the attacker learns nothing.
         try:
-            _throttle_resend(existing_user.email)
+            _throttle_resend(db, existing_user.email)
             auth.send_verification_link(existing_user, db, str(request.base_url))
         except HTTPException:
             pass
@@ -173,7 +179,7 @@ def login(
     one email or one IP inside the window, further attempts get a 429.
     """
     ip = request.client.host if request.client else "unknown"
-    if not _login_attempt_allowed(form_data.username, ip):
+    if not _login_attempt_allowed(db, form_data.username, ip):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many failed sign-in attempts — please wait a few minutes and try again.",
@@ -181,7 +187,7 @@ def login(
 
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if user is None or not verify_password(form_data.password, user.hashed_password):
-        _record_login_failure(form_data.username, ip)
+        _record_login_failure(db, form_data.username, ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -197,7 +203,7 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    _reset_login_failures(form_data.username, ip)
+    _reset_login_failures(db, form_data.username, ip)
     return schemas.Token(access_token=create_access_token(str(user.id)))
 
 
@@ -349,7 +355,7 @@ def resend_verification(
     if current_user.is_verified:
         return {"message": "Email already verified"}
 
-    _throttle_resend(current_user.email)
+    _throttle_resend(db, current_user.email)
     try:
         auth.send_verification_link(current_user, db, str(request.base_url))
     except Exception:
@@ -375,7 +381,7 @@ def resend_verification_email_pub(
     """
     user = db.query(models.User).filter(models.User.email == body.email).first()
     if user is not None and not user.is_verified:
-        _throttle_resend(user.email)
+        _throttle_resend(db, user.email)
         try:
             auth.send_verification_link(user, db, str(request.base_url))
         except Exception:
@@ -395,12 +401,14 @@ def forgot_password(
     registered — prevents account-enumeration via this endpoint.
     """
     user = db.query(models.User).filter(models.User.email == body.email).first()
+    ip = request.client.host if request.client else "unknown"
     if user is not None:
-        # Throttled (once per minute per address) so the endpoint can't be
-        # used to flood a victim's inbox. A throttle hit is swallowed and the
-        # caller still gets the generic message — staying non-enumerating.
+        # Throttled (once per minute per address, plus a per-IP hourly cap) so
+        # the endpoint can't be used to flood a victim's inbox. A throttle hit
+        # is swallowed and the caller still gets the generic message — staying
+        # non-enumerating.
         try:
-            _throttle_reset(user.email)
+            _throttle_reset(db, user.email, ip)
             token = auth.issue_reset_token(user, db)
             reset_url = f"{str(request.base_url)}reset-password.html?token={token}"
             mailer.send_password_reset_email(user.email, reset_url)

@@ -12,7 +12,6 @@ import pytest
 
 import ai_config
 import ai_providers
-import routers.ai as ai_router
 from conftest import auth_headers, unique_email
 
 
@@ -205,7 +204,6 @@ def test_audit_trail_records_mutations(client):
 
 def test_rate_limit(monkeypatch, client):
     monkeypatch.setattr(ai_config, "AI_RATE_LIMIT_PER_HOUR", 2)
-    ai_router._chat_windows.clear()
     headers = auth_headers(client)
     for _ in range(2):
         assert _chat(client, headers, "show my tasks").status_code == 200

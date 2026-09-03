@@ -1359,14 +1359,6 @@ async function aiEnsureStatus() {
     aiEls.notice.hidden = false;
     aiEls.input.disabled = true;
     aiEls.send.disabled = true;
-  } else if (aiState.status.provider === "mock") {
-    // Server has no AI key — the offline mock agent answers with canned
-    // replies. Make that explicit instead of looking like a broken chat.
-    aiEls.notice.textContent =
-      "Demo mode — no AI key is configured on this server, so replies are " +
-      "canned. Set AI_PROVIDER=mistral and MISTRAL_API_KEY in the server " +
-      "environment (Render dashboard → Environment) for the real assistant.";
-    aiEls.notice.hidden = false;
   }
   return aiState.status;
 }

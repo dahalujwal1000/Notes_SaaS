@@ -947,6 +947,11 @@ input, textarea { font: inherit; color: inherit; }
   .timeline { padding: 6px 16px 30px; }
   .notes-wrap { flex-direction: column; height: auto; }
   .notes-side { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+  /* AI chat: go edge-to-edge and keep the input above the home indicator */
+  .ai-panel { width: 100vw; border-left: none; }
+  .ai-form {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* ---------------- events (sidebar) ---------------- */
@@ -1037,6 +1042,10 @@ input, textarea { font: inherit; color: inherit; }
   top: 0;
   right: 0;
   height: 100vh;
+  /* Mobile browsers: 100vh ignores the dynamic URL bar, which pushed the
+     message list + input below the visible screen. dvh tracks the real
+     visible viewport (falls back to 100vh where unsupported). */
+  height: 100dvh;
   width: min(380px, 100vw);
   background: var(--surface);
   border-left: 1px solid var(--border);
@@ -1078,11 +1087,25 @@ input, textarea { font: inherit; color: inherit; }
 
 .ai-messages {
   flex: 1;
+  /* Without min-height:0 the flex item refuses to shrink below its content
+     size, so the list overflows the panel (clipped) instead of scrolling. */
+  min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* Friendly empty state — otherwise the panel opens as a blank area on mobile
+   and looks like the messages failed to load. */
+.ai-messages:empty::before {
+  content: "👋 Hi! Ask me anything about your workspace — e.g. “create a task called Fix login bug in To-do” or “what’s on my calendar?”";
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 4px 2px;
 }
 
 .ai-msg {

@@ -13,3 +13,6 @@ psycopg[binary]==3.3.4
 # Loads a local .env file for local development; hosting platforms set real
 # environment variables from their dashboards, which always take precedence.
 python-dotenv==1.2.3
+# AI assistant: REST calls to the Gemini / Groq free-tier APIs (also already
+# a transitive dependency of FastAPI's TestClient).
+httpx==0.28.1

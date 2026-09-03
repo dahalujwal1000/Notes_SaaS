@@ -6,6 +6,7 @@ A production-style **Notes CRUD backend** with JWT authentication — built as a
 
 ## Features
 
+- **AI assistant (new)** — a sidebar chat ("Agents & tools → AI Assistant") powered by a free LLM (Google Gemini or Groq, no credit card; an offline **mock** assistant runs when no key is configured). It can read your tasks/notes/events and **create, move, rename and delete** via tool calling — the LLM never touches the database, every call is validated and scoped to your account, deletes require an explicit **Confirm/Cancel** step, all actions are audited (`ai_actions` table), and chat is rate-limited per user. Config: `AI_PROVIDER` / `AI_API_KEY` / `AI_MODEL` / `AI_ENABLED` in `.env` — see `.env.example`.
 - **SaaS workspace dashboard (new)** — collapsible #FAFAFA sidebar with **Upcoming events** (add events with name/description/date; shows title, date + "Today / Tomorrow / in Xd" countdown), Agents & tools, Teamspaces / Private groups, browser-tab view switcher, and a **drag-and-drop Kanban board** (To-do / In progress / In review / Complete) with status dots, emoji avatars, per-column counts, timeline view, search & sort, and floating insight cards
 - **Notion-style notes** — sidebar + editor, debounced autosave, search, to-do checkboxes (`- [ ]` syntax)
 - **JWT auth** — signup/login, bcrypt-hashed passwords, 60-minute access tokens
@@ -167,6 +168,17 @@ in), or any HTTP client — Postman, curl, PowerShell `Invoke-RestMethod`.
    commonly suggested `MAIL_SERVER` name is accepted as an alias but logs
    a startup warning), `MAIL_PORT` (default `587` = STARTTLS, `465` =
    implicit SSL) and `MAIL_FROM` (default = `MAIL_USER`).
+
+   **Brevo instead of Gmail (free tier, 300 emails/day):** open Brevo →
+   **Settings → SMTP & API → SMTP tab**, copy the **SMTP login** (an
+   email-format identifier — *not* your account password) and generate an
+   **SMTP key** (`xsmtpsib-…`). Then set `MAIL_USER=<SMTP login>`,
+   `MAIL_APP_PASSWORD=<SMTP key>`, `MAIL_HOST=smtp-relay.brevo.com` and
+   `MAIL_PORT=587`. Brevo is auto-detected from the key prefix, so
+   `MAIL_HOST` only needs setting to match docs/dashboards. The From
+   address (default `MAIL_USER`) must be a **verified sender in Brevo** —
+   a `gmail.com` From hurts deliverability there, so prefer your own
+   domain. Test with `mailtest.py --send you@example.com`.
 
 ### Sign in with Google — free setup (5 minutes)
 

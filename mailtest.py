@@ -5,7 +5,8 @@ Run from the project folder:
     venv\\Scripts\\python mailtest.py --send you@gmail.com
 
 It reads the same config as the app: env vars, or the local `.env` file
-(gitignored). Fill MAIL_USER / MAIL_APP_PASSWORD there first.
+(gitignored). Fill MAIL_USER (Gmail address or Brevo SMTP login) and
+MAIL_APP_PASSWORD (Gmail App Password or Brevo SMTP key) there first.
 """
 
 import os
@@ -20,23 +21,40 @@ load_dotenv()
 
 backend = os.environ.get("MAIL_BACKEND") or "console"
 user = os.environ.get("MAIL_USER") or ""
-password = (os.environ.get("MAIL_APP_PASSWORD") or "").replace(" ", "")
+password_raw = os.environ.get("MAIL_APP_PASSWORD") or ""
+password = password_raw.replace(" ", "")
+is_brevo = password_raw.strip().lower().startswith("xsmtpsib-")
 # Same resolution as the app (mailer._smtp_host): MAIL_HOST is the documented
 # name, MAIL_SERVER accepted as an alias so this diagnostic matches real
-# behavior on the hosting dashboard.
-host = os.environ.get("MAIL_HOST") or os.environ.get("MAIL_SERVER") or "smtp.gmail.com"
+# behavior on the hosting dashboard. A Brevo SMTP key defaults the host to
+# smtp-relay.brevo.com, exactly like the app does.
+host = (
+    os.environ.get("MAIL_HOST")
+    or os.environ.get("MAIL_SERVER")
+    or ("smtp-relay.brevo.com" if is_brevo else "smtp.gmail.com")
+)
 port = int(os.environ.get("MAIL_PORT", "587"))
 from_addr = os.environ.get("MAIL_FROM") or user or "(not set)"
+provider = "Brevo" if is_brevo else ("Gmail" if "gmail" in host.lower() else "other")
 
 print("=== mail config ===")
 print(f"MAIL_BACKEND        = {backend}")
+print(f"Provider            = {provider}")
 print(f"MAIL_USER           = {user or '(not set)'}")
-print(f"MAIL_APP_PASSWORD   = {'set (' + str(len(password)) + ' chars)' if password else '(NOT SET)'}")
+if password:
+    print(f"MAIL_APP_PASSWORD   = set ({len(password)} chars, Brevo SMTP key)" if is_brevo else "MAIL_APP_PASSWORD   = set (" + str(len(password)) + " chars)")
+else:
+    print("MAIL_APP_PASSWORD   = (NOT SET)")
 print(f"MAIL_HOST / PORT    = {host}:{port}")
 print(f"MAIL_FROM           = {from_addr}")
 if not os.environ.get("MAIL_HOST") and os.environ.get("MAIL_SERVER"):
     print("(note: SMTP host came from MAIL_SERVER — the app documents MAIL_HOST;")
     print("  both work, but rename it to MAIL_HOST in the dashboard to match the docs)")
+if is_brevo:
+    print("(Brevo: MAIL_USER must be the SMTP login from Brevo → Settings → SMTP & API →")
+    print("  SMTP tab — an email-format identifier, NOT your account password. The")
+    print("  xsmtpsib-… key above is the password only. The From address (default")
+    print("  MAIL_USER) must be a verified sender in Brevo, or Brevo rejects the mail.)")
 print()
 
 if backend != "smtp":
@@ -83,7 +101,16 @@ try:
 except smtplib.SMTPAuthenticationError as err:
     print("SMTP login FAILED — credentials rejected.")
     print(f"  ({err.smtp_code}) {err.smtp_error.decode(errors='replace')}")
-    print("Likely causes: wrong App Password, or 2-Step Verification is off.")
+    if is_brevo:
+        print("Brevo causes: (1) MAIL_USER is not the SMTP login from Brevo →")
+        print("  Settings → SMTP & API → SMTP tab. The login is a separate")
+        print("  email-format identifier — NOT your Brevo account password, and")
+        print("  NOT the SMTP key. Copy the value from the 'Login' field there.")
+        print("  (2) An API key (xkeysib-…) is set instead of an SMTP key (xsmtpsib-…).")
+        print("  (3) The key contains a trailing space or line break.")
+    else:
+        print("Likely causes: wrong App Password / SMTP login, or 2-Step Verification")
+        print("  is off (Gmail), or a stray space in the key.")
     sys.exit(3)
 except Exception as err:  # noqa: BLE001
     print("Mail test FAILED:")

@@ -5,7 +5,10 @@ Selects the implementation via the MAIL_BACKEND env var:
     and verification links land in mailer.OUTBOX (used by local dev/tests).
   - "smtp": real SMTP over TLS. Gmail uses smtp.gmail.com:587 with
     MAIL_USER + MAIL_APP_PASSWORD (an App Password — never the Google
-    account password). Host/port come from MAIL_HOST (MAIL_SERVER is
+    account password). Brevo uses smtp-relay.brevo.com:587 with MAIL_USER =
+    the SMTP login from Brevo → Settings → SMTP & API and MAIL_APP_PASSWORD =
+    an SMTP key; Brevo is auto-detected from the `xsmtpsib-` key prefix, so
+    MAIL_HOST may stay unset. Host/port come from MAIL_HOST (MAIL_SERVER is
     accepted as an alias, with a warning) and MAIL_PORT. For local mail
     preview, point MAIL_HOST at Mailpit (e.g. 127.0.0.1:1025) and leave
     credentials blank.
@@ -46,21 +49,41 @@ MAIL_APP_PASSWORD = os.environ.get("MAIL_APP_PASSWORD") or ""
 OUTBOX: list[dict] = []
 
 
+def _is_brevo() -> bool:
+    """True when the configured password is a Brevo SMTP key.
+
+    Brevo SMTP keys start with `xsmtpsib-` (API keys start with `xkeysib-`
+    and can't be used for SMTP). Auto-detection keeps the default-host
+    fallback from pointing Brevo keys at Gmail.
+    """
+    return (MAIL_APP_PASSWORD or "").strip().lower().startswith("xsmtpsib-")
+
+
 def _smtp_host() -> str:
     """SMTP hostname for the `smtp` backend.
 
     MAIL_HOST is the documented name; MAIL_SERVER is accepted as an alias
     (a common name for the same setting on hosting dashboards) but logs a
     warning, so a misnamed env var never silently diverges from the docs.
+
+    With neither set, the fallback is smtp.gmail.com — unless the password is
+    a Brevo SMTP key (`xsmtpsib-`), in which case smtp-relay.brevo.com is used.
     """
-    host = os.environ.get("MAIL_HOST") or os.environ.get("MAIL_SERVER") or "smtp.gmail.com"
-    if not os.environ.get("MAIL_HOST") and os.environ.get("MAIL_SERVER"):
-        logger.warning(
-            "mailer: SMTP host read from MAIL_SERVER=%r — the documented name is "
-            "MAIL_HOST; rename it in the hosting dashboard to silence this warning",
-            os.environ["MAIL_SERVER"],
+    host = os.environ.get("MAIL_HOST") or os.environ.get("MAIL_SERVER")
+    if host:
+        if not os.environ.get("MAIL_HOST") and os.environ.get("MAIL_SERVER"):
+            logger.warning(
+                "mailer: SMTP host read from MAIL_SERVER=%r — the documented name is "
+                "MAIL_HOST; rename it in the hosting dashboard to silence this warning",
+                os.environ["MAIL_SERVER"],
+            )
+        return host
+    if _is_brevo():
+        logger.info(
+            "mailer: no MAIL_HOST set — defaulting to smtp-relay.brevo.com for the Brevo SMTP key"
         )
-    return host
+        return "smtp-relay.brevo.com"
+    return "smtp.gmail.com"
 
 
 def _log_config() -> None:
@@ -68,12 +91,50 @@ def _log_config() -> None:
     Render logs immediately reveal why an email did (or didn't) get sent."""
     if MAIL_BACKEND == "smtp":
         if MAIL_USER and MAIL_APP_PASSWORD:
-            logger.info(
-                "mailer: backend=smtp user=%r host=%s:%s (credentials present)",
-                MAIL_USER,
-                _smtp_host(),
-                os.environ.get("MAIL_PORT", "587"),
-            )
+            host = _smtp_host()
+            if _is_brevo():
+                logger.info(
+                    "mailer: backend=smtp provider=brevo login=%r host=%s:%s (SMTP key present)",
+                    MAIL_USER,
+                    host,
+                    os.environ.get("MAIL_PORT", "587"),
+                )
+                logger.info(
+                    "mailer: Brevo setup — MAIL_USER must be the SMTP login shown at "
+                    "Brevo → Settings → SMTP & API → SMTP tab, and the From address "
+                    "(MAIL_FROM, default MAIL_USER) must be a verified sender in Brevo "
+                    "or Brevo rejects the message."
+                )
+            elif "gmail" in host.lower() and "brevo" not in host.lower():
+                logger.info(
+                    "mailer: backend=smtp provider=gmail user=%r host=%s:%s (credentials present)",
+                    MAIL_USER,
+                    host,
+                    os.environ.get("MAIL_PORT", "587"),
+                )
+                # Gmail App Passwords are exactly 16 characters (often displayed
+                # as four groups of four, e.g. "abcd efgh ijkl mnop", spaces
+                # optional). Any other length is almost certainly not a real App
+                # Password, and every send will fail with SMTP 535 — which then
+                # falls back to console capture, so links appear in the logs but
+                # never in an inbox. Warn at startup so the logs explain it.
+                pw_len = len(MAIL_APP_PASSWORD.replace(" ", ""))
+                if pw_len != 16:
+                    logger.warning(
+                        "mailer: MAIL_APP_PASSWORD is %d chars — Gmail App Passwords are "
+                        "exactly 16 (4 groups of 4, spaces allowed). Recreate one at "
+                        "https://myaccount.google.com/apppasswords (2-Step Verification "
+                        "must be ON for that Google account), then update this env var and "
+                        "redeploy. Until then, emails are only logged, never delivered.",
+                        pw_len,
+                    )
+            else:
+                logger.info(
+                    "mailer: backend=smtp user=%r host=%s:%s (credentials present)",
+                    MAIL_USER,
+                    host,
+                    os.environ.get("MAIL_PORT", "587"),
+                )
         else:
             logger.warning(
                 "mailer: MAIL_BACKEND=smtp but MAIL_USER/MAIL_APP_PASSWORD are not set "
@@ -139,7 +200,7 @@ def send_email(to_email: str, subject: str, html: str) -> None:
     if MAIL_BACKEND == "smtp":
         try:
             _smtp_send(to_email, subject, html)
-            logger.info("email queued to %s via smtp", to_email)
+            logger.info("email queued to %s via %s", to_email, "brevo" if _is_brevo() else "smtp")
             return
         except Exception:
             logger.exception("SMTP send FAILED — falling back to console capture")

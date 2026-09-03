@@ -76,6 +76,37 @@ class Task(Base):
     )
 
 
+class AIAction(Base):
+    """Audit log + confirmation queue for every AI assistant tool call.
+
+    Lifecycle:
+      - Mutating tools (create/update) are logged with status "direct"
+        immediately after execution.
+      - Destructive tools (deletes) are created with status "proposed"
+        (a dry-run — nothing is deleted yet) and only transition to
+        "executed" via POST /ai/actions/{id}/confirm. "cancelled" and
+        "failed" are the other terminal states.
+
+    This doubles as the confirmation store: it survives restarts (unlike
+    an in-memory dict) and gives a full trace of what the AI did and when.
+    """
+
+    __tablename__ = "ai_actions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    tool: Mapped[str] = mapped_column(String(64), nullable=False)
+    args: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="proposed", index=True)
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    resolved_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Event(Base):
     """Calendar event shown in the sidebar's Upcoming events group."""
 

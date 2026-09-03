@@ -14,6 +14,11 @@ os.environ["DATABASE_URL"] = "sqlite:///" + _test_db_path
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production"
 os.environ["MAIL_BACKEND"] = "console"
 os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"  # exercise the hard gate
+# AI assistant: force the offline mock provider so the suite never touches
+# the network, even if a real key exists in the developer's .env.
+os.environ["AI_PROVIDER"] = "mock"
+os.environ["AI_API_KEY"] = ""
+os.environ["GEMINI_API_KEY"] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

@@ -106,6 +106,13 @@
       </section>
 
       <section class="side-group open">
+        <button class="group-head" type="button"><span class="gh-icon">🤖</span><span>Agents &amp; tools</span><i class="chev">▾</i></button>
+        <div class="group-body">
+          <button class="side-item" id="ai-chat-btn" type="button"><span class="si-icon">✨</span><span class="si-label">AI Assistant</span></button>
+        </div>
+      </section>
+
+      <section class="side-group open">
         <button class="group-head" type="button"><span class="gh-icon">👥</span><span>Teamspaces</span><i class="chev">▾</i></button>
         <div class="group-body">
           <button class="side-item" data-view="home" type="button"><span class="si-icon">🚀</span><span class="si-label">Product board</span></button>
@@ -209,6 +216,20 @@
     </section>
   </main>
 
+  <!-- AI assistant slide-over panel -->
+  <aside id="ai-panel" class="ai-panel" hidden aria-label="AI assistant">
+    <header class="ai-head">
+      <span class="ai-head-title"><span class="ai-dot"></span>AI Assistant</span>
+      <button id="ai-close" class="btn-icon" type="button" title="Close">✕</button>
+    </header>
+    <div id="ai-messages" class="ai-messages" aria-live="polite"></div>
+    <p id="ai-notice" class="ai-notice" hidden></p>
+    <form id="ai-form" class="ai-form">
+      <input id="ai-input" class="ai-input" type="text" placeholder="Ask about tasks or notes…" maxlength="4000" autocomplete="off">
+      <button id="ai-send" class="btn btn-primary" type="submit">Send</button>
+    </form>
+  </aside>
+
   <!-- Add-event modal -->
   <div id="event-modal" class="modal-overlay" hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title">
@@ -242,7 +263,7 @@
   <div id="float-stack" class="float-stack" aria-live="polite"></div>
 </div>
 
-<script src="app.js?v=20260831c"></script>
+<script src="app.js?v=20260903a"></script>
 </body>
 </html>
 

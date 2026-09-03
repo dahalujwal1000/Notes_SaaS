@@ -1330,3 +1330,159 @@ document.addEventListener("click", (event) => {
 
 
 
+/* ============================================================
+   AI assistant — sidebar chat panel (Agents & tools)
+   Talks to POST /ai/chat; delete proposals render as cards with
+   Confirm / Cancel buttons wired to /ai/actions/{id}/confirm|cancel.
+   All text rendered via textContent (XSS-safe, same as the rest).
+   ============================================================ */
+
+const aiEls = {
+  btn: $("ai-chat-btn"), panel: $("ai-panel"), close: $("ai-close"),
+  messages: $("ai-messages"), notice: $("ai-notice"),
+  form: $("ai-form"), input: $("ai-input"), send: $("ai-send"),
+};
+
+const aiState = { status: null, busy: false };
+
+async function aiEnsureStatus() {
+  if (aiState.status) return aiState.status;
+  try {
+    aiState.status = await api("/ai/status");
+  } catch (_) {
+    aiState.status = { enabled: false, provider: "off" };
+  }
+  if (!aiState.status.enabled) {
+    aiEls.notice.textContent =
+      "The AI assistant is disabled on this server. Set AI_ENABLED=true and " +
+      "configure an AI_PROVIDER / AI_API_KEY to enable it.";
+    aiEls.notice.hidden = false;
+    aiEls.input.disabled = true;
+    aiEls.send.disabled = true;
+  }
+  return aiState.status;
+}
+
+function aiOpen() {
+  aiEls.panel.hidden = false;
+  aiEnsureStatus();
+  aiEls.input.focus();
+}
+
+function aiClose() {
+  aiEls.panel.hidden = true;
+}
+
+function aiBubble(text, who) {
+  const div = document.createElement("div");
+  div.className = "ai-msg " + (who === "user" ? "ai-msg-user" : "ai-msg-bot");
+  div.textContent = text;
+  aiEls.messages.appendChild(div);
+  aiEls.messages.scrollTop = aiEls.messages.scrollHeight;
+  return div;
+}
+
+function aiThinking() {
+  const div = aiBubble("Thinking…", "bot");
+  div.classList.add("ai-thinking");
+  return div;
+}
+
+function aiRefreshData() {
+  // Mirror AI-made changes into the open views (tasks/notes/events).
+  if (typeof loadTasks === "function") loadTasks();
+  if (typeof loadEvents === "function") loadEvents();
+  if (state.view === "notes" && typeof refreshNotes === "function") {
+    refreshNotes({ selectFirst: false });
+  }
+}
+
+function aiProposalCard(action) {
+  const card = document.createElement("div");
+  card.className = "ai-proposal";
+
+  const label = document.createElement("p");
+  label.className = "ai-proposal-text";
+  label.textContent = action.summary;
+  card.appendChild(label);
+
+  const row = document.createElement("div");
+  row.className = "ai-proposal-actions";
+
+  const okBtn = document.createElement("button");
+  okBtn.className = "btn btn-primary btn-sm";
+  okBtn.type = "button";
+  okBtn.textContent = "Confirm";
+  const noBtn = document.createElement("button");
+  noBtn.className = "btn btn-sm";
+  noBtn.type = "button";
+  noBtn.textContent = "Cancel";
+  row.appendChild(okBtn);
+  row.appendChild(noBtn);
+  card.appendChild(row);
+
+  async function settle(path, okText) {
+    okBtn.disabled = true;
+    noBtn.disabled = true;
+    try {
+      const res = await api(`/ai/actions/${action.action_id}/${path}`, { method: "POST" });
+      aiBubble(okText(res), "bot");
+      aiRefreshData();
+    } catch (err) {
+      aiBubble("⚠️ " + err.message, "bot");
+      okBtn.disabled = false;
+      noBtn.disabled = false;
+    }
+  }
+
+  okBtn.addEventListener("click", () =>
+    settle("confirm", (r) => "✅ " + (r.summary || "Done — the deletion was executed."))
+  );
+  noBtn.addEventListener("click", () =>
+    settle("cancel", () => "Cancelled — nothing was deleted.")
+  );
+
+  aiEls.messages.appendChild(card);
+  aiEls.messages.scrollTop = aiEls.messages.scrollHeight;
+}
+
+async function aiSend(event) {
+  event.preventDefault();
+  if (aiState.busy) return;
+  const text = aiEls.input.value.trim();
+  if (!text) return;
+  aiEls.input.value = "";
+  aiBubble(text, "user");
+  aiState.busy = true;
+  aiEls.send.disabled = true;
+  const thinking = aiThinking();
+  try {
+    const res = await api("/ai/chat", { method: "POST", body: { message: text } });
+    thinking.remove();
+    for (const action of res.actions || []) {
+      if (action.status === "proposed" && action.action_id != null) {
+        aiProposalCard(action);
+      } else if (action.summary) {
+        const icon = action.status === "cancelled" ? "↩️" : "✅";
+        aiBubble(`${icon} ${action.summary}`, "bot");
+      }
+    }
+    aiBubble(res.reply || "…", "bot");
+    if ((res.actions || []).some((a) => a.status === "executed")) aiRefreshData();
+  } catch (err) {
+    thinking.remove();
+    aiBubble("⚠️ " + err.message, "bot");
+  } finally {
+    aiState.busy = false;
+    aiEls.send.disabled = false;
+    aiEls.input.focus();
+  }
+}
+
+aiEls.btn.addEventListener("click", aiOpen);
+aiEls.close.addEventListener("click", aiClose);
+aiEls.form.addEventListener("submit", aiSend);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !aiEls.panel.hidden) aiClose();
+});
+
